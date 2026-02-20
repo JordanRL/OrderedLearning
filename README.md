@@ -19,6 +19,9 @@ The primary experiment is `mod_arithmetic`, which trains a small transformer on 
 git clone https://github.com/JordanRL/OrderedLearning.git
 cd OrderedLearning
 
+# To reproduce paper results, use the exact code version:
+git checkout paper-data-v1
+
 # For general use (allows compatible newer versions):
 pip install -r requirements.txt
 
@@ -33,6 +36,8 @@ Requires Python 3.11+ and PyTorch 2.0+. The `mod_arithmetic` experiment can run 
 ## Replicating the Paper Experiment
 
 The `mod_arithmetic` experiment is self-contained -- no external data or GPU required. This trains a 2-layer transformer on `(a + b) mod 9973` using all four data ordering strategies (stride, random, fixed-random, target) and reports grokking behavior for each.
+
+> **Important:** To reproduce paper results, make sure you are on the `paper-data-v1` tag (`git checkout paper-data-v1`). Later commits may change framework behavior.
 
 ### Exact Commands Used For Paper Results
 
