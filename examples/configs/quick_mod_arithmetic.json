@@ -1,0 +1,20 @@
+{
+  "experiment_name": "mod_arithmetic",
+  "strategy": "stride",
+  "p": 97,
+  "train_size": 5000,
+  "test_size": 4000,
+  "batch_size": 64,
+  "lr": 0.001,
+  "min_lr": 5e-7,
+  "epochs": 100,
+  "embed_dim": 128,
+  "num_heads": 4,
+  "layers": 2,
+  "weight_decay": 0.1,
+  "eval_every": 5,
+  "snapshot_every": 10,
+  "checkpoint_every": 50,
+  "seed": 42,
+  "output_dir": "output"
+}

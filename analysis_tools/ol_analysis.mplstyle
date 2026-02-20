@@ -1,0 +1,46 @@
+# OrderedLearning analysis style — dark theme matching OLDarkTheme
+
+# Figure
+figure.facecolor: 282C34
+figure.edgecolor: 282C34
+figure.dpi: 150
+
+# Axes
+axes.facecolor: 282C34
+axes.edgecolor: 3E4451
+axes.labelcolor: F8E8EC
+axes.titlesize: 12
+axes.titleweight: bold
+axes.titlecolor: F8E8EC
+axes.grid: True
+axes.prop_cycle: cycler('color', ['61AFEF', 'E06C75', '98C379', 'E5C07B', 'BE50AE', '56B6C2', 'D19A66', 'B87FD9', 'FF69B4', '4B6BFF'])
+
+# Grid
+grid.color: 3E4451
+grid.linewidth: 0.5
+grid.alpha: 0.6
+
+# Text
+text.color: F8E8EC
+font.size: 10
+
+# Tick
+xtick.color: 8A8F98
+ytick.color: 8A8F98
+xtick.labelsize: 9
+ytick.labelsize: 9
+
+# Legend
+legend.facecolor: 282C34
+legend.edgecolor: 3E4451
+legend.fontsize: 9
+legend.framealpha: 0.8
+
+# Lines
+lines.linewidth: 1.5
+
+# Savefig
+savefig.facecolor: 282C34
+savefig.edgecolor: 282C34
+savefig.bbox: tight
+savefig.pad_inches: 0.2

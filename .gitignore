@@ -1,0 +1,35 @@
+# IDE
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment
+.env
+
+# Experiment snapshots and model weights
+*_snapshots
+*.pt
+
+# Experiment output
+output/
+analysis_results/
+gradient_analysis_results/
+trajectories/
+raw_data/
+raw_logs/
+
+# Data preprocessing cache
+wiki_graph_cache/
+
+# AI assistant docs (session-specific)
+ai_docs/
+
+# AI assistant configuration
+CLAUDE.md
+.claude
+
+# Excluded from initial release
+no_commit/

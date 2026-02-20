@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+models/
+trajectories/
+analysis_results/
+gradient_analysis_results/
+*.csv
+*.pt
+*.pth

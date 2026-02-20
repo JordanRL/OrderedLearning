@@ -1,0 +1,52 @@
+{
+  "experiment": "mod_arithmetic",
+  "strategy": "stride",
+  "timing": {
+    "duration_seconds": 1847.23,
+    "steps_per_second": 3174.52
+  },
+  "model": {
+    "parameters": 1052433,
+    "architecture": {
+      "vocab_size": 9973,
+      "n_embd": 256,
+      "n_head": 4,
+      "n_layer": 2,
+      "n_positions": 3,
+      "n_inner": 1024
+    }
+  },
+  "training": {
+    "planned_epochs": 5000,
+    "actual_epochs": 3847,
+    "early_stopped": true,
+    "total_gradient_steps": 4508511,
+    "seed": 199,
+    "lr": 0.001,
+    "batch_size": 256,
+    "weight_decay": 0.1,
+    "device": "cuda"
+  },
+  "init_eval": {
+    "val_acc": 0.0098,
+    "train_acc": 0.0102
+  },
+  "final_eval": {
+    "val_acc": 99.7243,
+    "train_acc": 100.0
+  },
+  "deltas": {
+    "val_acc": {
+      "init": 0.0098,
+      "final": 99.7243,
+      "change": 99.7145,
+      "ratio": 10175.9490
+    },
+    "train_acc": {
+      "init": 0.0102,
+      "final": 100.0,
+      "change": 99.9898,
+      "ratio": 9803.9216
+    }
+  }
+}

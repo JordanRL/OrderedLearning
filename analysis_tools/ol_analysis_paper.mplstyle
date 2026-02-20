@@ -1,0 +1,61 @@
+# OrderedLearning paper style — clean white background for publications
+#
+# Uses the Wong colorblind-friendly palette (Nature Methods, 2011)
+# and publication-standard typography.
+
+# Figure
+figure.facecolor: white
+figure.edgecolor: white
+figure.dpi: 150
+
+# Axes
+axes.facecolor: white
+axes.edgecolor: 333333
+axes.labelcolor: 222222
+axes.titlesize: 11
+axes.titleweight: bold
+axes.titlecolor: 222222
+axes.linewidth: 0.8
+axes.grid: True
+axes.spines.top: False
+axes.spines.right: False
+axes.prop_cycle: cycler('color', ['0072B2', 'D55E00', '009E73', 'E69F00', 'CC79A7', '56B4E9', 'F0E442', '000000'])
+
+# Grid
+grid.color: CCCCCC
+grid.linewidth: 0.4
+grid.alpha: 0.5
+grid.linestyle: --
+
+# Text
+text.color: 222222
+font.family: sans-serif
+font.sans-serif: DejaVu Sans, Helvetica, Arial, sans-serif
+font.size: 10
+
+# Tick
+xtick.color: 333333
+ytick.color: 333333
+xtick.labelsize: 9
+ytick.labelsize: 9
+xtick.direction: in
+ytick.direction: in
+xtick.major.width: 0.6
+ytick.major.width: 0.6
+
+# Legend
+legend.facecolor: white
+legend.edgecolor: CCCCCC
+legend.fontsize: 9
+legend.framealpha: 0.9
+legend.fancybox: False
+
+# Lines
+lines.linewidth: 1.5
+lines.markersize: 4
+
+# Savefig
+savefig.facecolor: white
+savefig.edgecolor: white
+savefig.bbox: tight
+savefig.pad_inches: 0.15
