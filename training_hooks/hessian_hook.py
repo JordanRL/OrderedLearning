@@ -7,9 +7,20 @@ theoretical decomposition:
                          ^^^^^^^^^^^^^^^^   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                          content term        entanglement term
 
-Fires at POST_STEP in configurable bursts: every_n_steps apart, each burst
-lasting burst_length consecutive steps.
+Uses a dual-phase design:
+  - PRE_STEP: captures the pre-step model state (theta before train_step).
+  - POST_STEP: restores to the *previous* pre-step state (theta_{N-1}) and
+    computes H_B(theta_{N-1}) * g_A(theta_{N-1}) via finite-difference.
+
+Fires in configurable bursts: every_n_steps apart, each burst lasting
+burst_length consecutive steps. The first step in each burst captures
+state but produces no metrics (no previous checkpoint yet), so a burst
+of 11 yields 10 data points.
 """
+
+import copy
+
+import copy
 
 import torch
 
@@ -32,10 +43,10 @@ class HessianHook(InterventionHook):
 
     name = "hessian"
     description = "Per-step entanglement term (H_B * g_A) via finite-difference Hv"
-    hook_points = {HookPoint.POST_STEP}
+    hook_points = {HookPoint.PRE_STEP, HookPoint.POST_STEP}
     loop_points = {
-        'epoch': {HookPoint.POST_STEP},
-        'step': {HookPoint.POST_STEP},
+        'epoch': {HookPoint.PRE_STEP, HookPoint.POST_STEP},
+        'step': {HookPoint.PRE_STEP, HookPoint.POST_STEP},
     }
     needs_grads = False
     needs_prev_step_grads = True
@@ -126,14 +137,16 @@ class HessianHook(InterventionHook):
         self,
         epsilon: float = 1e-4,
         every_n_steps: int = 1000,
-        burst_length: int = 10,
+        burst_length: int = 11,
     ):
         """
         Args:
             epsilon: Perturbation magnitude for finite-difference approximation.
             every_n_steps: Spacing between measurement bursts. First burst
                 fires at step every_n_steps (not step 0).
-            burst_length: Number of consecutive steps per burst.
+            burst_length: Number of consecutive steps per burst. The first
+                step captures state but produces no metrics, so a burst of
+                11 yields 10 data points.
         """
         self._epsilon = epsilon
 
@@ -145,11 +158,40 @@ class HessianHook(InterventionHook):
             warmup=every_n_steps,
         )
 
-        # Internal state
+        # Full pre-step checkpoints (model + optimizer + scheduler) for
+        # correct Hessian evaluation at theta_{N-1}. Kept on GPU.
+        self._current_checkpoint: dict | None = None
+        self._previous_checkpoint: dict | None = None
+
+        # Entanglement coherence tracking
         self._prev_entanglement_flat: torch.Tensor | None = None
 
+    def _save_full_state(self, model_ctx) -> dict:
+        """Capture full training state on GPU."""
+        return {
+            'model': {k: v.clone() for k, v in model_ctx.model.state_dict().items()},
+            'optimizer': copy.deepcopy(model_ctx._optimizer.state_dict()),
+            'scheduler': model_ctx._scheduler.state_dict(),
+        }
+
+    def _restore_full_state(self, state: dict, model_ctx):
+        """Restore full training state into model_ctx's model/optimizer/scheduler."""
+        model_ctx.model.load_state_dict(state['model'])
+        model_ctx._optimizer.load_state_dict(state['optimizer'])
+        model_ctx._scheduler.load_state_dict(state['scheduler'])
+
     def intervene(self, run_ctx, model_ctx) -> dict[str, float]:
-        # Get g_A (previous step's gradient)
+        # PRE_STEP: rotate checkpoints, capture full pre-step state
+        if run_ctx.hook_point == HookPoint.PRE_STEP:
+            self._previous_checkpoint = self._current_checkpoint
+            self._current_checkpoint = self._save_full_state(model_ctx)
+            return {}
+
+        # POST_STEP: compute Hessian at previous pre-step state
+        if self._previous_checkpoint is None:
+            return {}
+
+        # Get g_A (previous step's gradient, computed at theta_{N-1})
         g_A = run_ctx.prev_step_grads
         if g_A is None:
             return {}
@@ -163,24 +205,27 @@ class HessianHook(InterventionHook):
         # Normalized direction for numerical stability in finite-difference
         g_A_hat = {name: grad / g_A_norm for name, grad in g_A.items()}
 
-        # Get learning rate from optimizer
-        eta = model_ctx._optimizer.param_groups[0]['lr']
+        # Get learning rate at theta_{N-1} from the saved optimizer state
+        eta = self._previous_checkpoint['optimizer']['param_groups'][0]['lr']
 
-        # Save checkpoint (theta'') — lightweight: GPU-only, no optimizer
-        token = model_ctx.save_checkpoint(full=False)
+        # Save current training state (theta'') for restoration
+        token = model_ctx.save_checkpoint(full=True)
 
         try:
-            # Baseline gradient: g_B(theta'')
+            # Restore to theta_{N-1} (previous pre-step state)
+            self._restore_full_state(self._previous_checkpoint, model_ctx)
+
+            # Baseline gradient: g_B(theta_{N-1})
             baseline_grads = model_ctx.compute_batch_gradients()
 
-            # Perturb: theta'' + epsilon * g_A_hat
+            # Perturb: theta_{N-1} + epsilon * g_A_hat
             model_ctx.apply_perturbation(g_A_hat, scale=self._epsilon)
 
-            # Perturbed gradient: g_B(theta'' + eps * g_A_hat)
+            # Perturbed gradient: g_B(theta_{N-1} + eps * g_A_hat)
             perturbed_grads = model_ctx.compute_batch_gradients()
 
             # Hv approximation: (perturbed - baseline) / epsilon * ||g_A||
-            # This gives H_B * g_A (unnormalized — the actual entanglement direction)
+            # This gives H_B(theta_{N-1}) * g_A (the actual entanglement direction)
             hv = {}
             for name in g_A:
                 if name in perturbed_grads and name in baseline_grads:
@@ -189,7 +234,7 @@ class HessianHook(InterventionHook):
                         / self._epsilon * g_A_norm
                     )
         finally:
-            # Always restore to theta''
+            # Always restore to theta'' (current training state)
             model_ctx.restore_checkpoint(token)
             model_ctx.discard_checkpoint(token)
 
@@ -359,4 +404,6 @@ class HessianHook(InterventionHook):
             self._prev_entanglement_flat = tensors['prev_entanglement']
 
     def reset(self):
+        self._current_checkpoint = None
+        self._previous_checkpoint = None
         self._prev_entanglement_flat = None

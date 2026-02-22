@@ -12,7 +12,7 @@ Training hooks fire at five lifecycle points:
 |---|---|---|
 | `PRE_EPOCH` | Before each training epoch | Setup, state capture |
 | `POST_EPOCH` | After each training epoch | Gradient analysis, weight tracking |
-| `PRE_STEP` | Before each training step | (Reserved) |
+| `PRE_STEP` | Before each training step | State capture for multi-step hooks |
 | `POST_STEP` | After each training step | Batch-level dynamics, entanglement |
 | `SNAPSHOT` | At `snapshot_every` intervals | Periodic expensive analyses |
 
@@ -127,8 +127,8 @@ Hooks with `needs_reference_weights=True` (gradient_projection, counterfactual, 
 Some hooks (hessian, adam_dynamics) use burst schedules to limit computational cost:
 
 ```
-every_n_steps=1000, burst_length=10
-→ fires at steps 1000-1009, 2000-2009, 3000-3009, ...
+every_n_steps=1000, burst_length=11
+→ fires at steps 1000-1010, 2000-2010, 3000-3010, ...
 ```
 
 ### Loop compatibility
@@ -162,7 +162,7 @@ Each hook declares which loop types it supports via `loop_points`. A hook that o
 | Hook | Lifecycle Points | Loop | Description | Doc |
 |---|---|---|---|---|
 | `counterfactual` | POST_EPOCH, SNAPSHOT | epoch | Counterfactual ordering analysis via shuffled epochs | [doc](hooks/counterfactual.md) |
-| `hessian` | POST_STEP | both | Per-step entanglement term (H_B * g_A) via finite-difference | [doc](hooks/hessian.md) |
+| `hessian` | PRE_STEP, POST_STEP | epoch | Per-step entanglement term (H_B * g_A) via finite-difference | [doc](hooks/hessian.md) |
 | `adam_dynamics` | POST_STEP | both | Adam optimizer state dynamics | [doc](hooks/adam-dynamics.md) |
 ### Debug Interventions
 

@@ -3,29 +3,33 @@
 > Per-step entanglement term (H_B · g_A) via finite-difference Hessian-vector product.
 
 **Type:** Intervention
-**Lifecycle Points:** POST_STEP
-**Loop Compatibility:** both
+**Lifecycle Points:** PRE_STEP, POST_STEP
+**Loop Compatibility:** epoch (step loop lacks PRE_STEP support)
 
 ## What It Does
 
-The hessian hook measures the **entanglement term** — the component of the gradient that arises from interactions between different data batches mediated by the loss landscape's curvature. Specifically, it estimates `H_B · g_A`, where `H_B` is the Hessian of the loss on the current batch and `g_A` is the gradient from a previous batch.
+The hessian hook measures the **entanglement term** — the component of the gradient that arises from interactions between different data batches mediated by the loss landscape's curvature. Specifically, it estimates `H_B(θ) · g_A(θ)`, where `H_B` is the Hessian of the loss on the current batch and `g_A` is the gradient from the previous batch, both evaluated at the correct pre-step parameters `θ` (before step A modified the model).
 
 This term captures how the curvature of one batch's loss surface deflects the gradient from another batch. In ordered data, this deflection can be systematic (always pushing in a consistent direction), while in random data it tends to cancel out. The entanglement term is the key theoretical quantity linking data ordering to learning dynamics.
 
 The Hessian-vector product is estimated via finite differences: `(∇L(θ + εg) - ∇L(θ)) / ε`, avoiding explicit Hessian computation.
 
-Uses a burst schedule to limit computational cost: fires for `burst_length` consecutive steps every `every_n_steps` steps.
+Uses a dual-phase design to evaluate the Hessian at the theoretically correct parameters:
+- **PRE_STEP:** Saves a full training checkpoint (model + optimizer + scheduler) before `train_step` modifies the model. Two checkpoints are maintained: current and previous.
+- **POST_STEP:** Restores the *previous* pre-step checkpoint (`θ_{N-1}`), computes the Hessian-vector product there, then restores the current training state.
+
+The first step in each burst only captures state (no previous checkpoint exists yet), so a burst of 11 yields 10 data points. Uses a burst schedule to limit computational cost: fires for `burst_length` consecutive steps every `every_n_steps` steps.
 
 ## Computational Cost
 
-**High.** Each firing requires one additional forward-backward pass (for the perturbed gradient). With default settings (every_n_steps=1000, burst_length=10), this adds ~1% overhead to total training time for long runs.
+**High.** Each firing requires two additional forward-backward passes (baseline and perturbed gradients at the restored parameters) plus a full checkpoint save/restore cycle. With default settings (every_n_steps=1000, burst_length=11), this adds ~1% overhead to total training time for long runs. Two full model checkpoints are held on GPU during active bursts.
 
 ## Assumptions and Compatibility
 
-- Works in both epoch and step loops
+- Requires epoch loop (step loop does not currently fire PRE_STEP hooks)
 - `needs_reference_weights=True` — uses reference solution for alignment metrics
-- Intervention hook: temporarily perturbs model parameters, then restores them
-- Requires access to optimizer state (gradient from previous step)
+- Intervention hook: saves/restores full training state to evaluate Hessian at correct parameters
+- Requires `prev_step_grads` (gradient from previous step, captured by the loop)
 
 ## Configuration
 
@@ -33,7 +37,7 @@ Uses a burst schedule to limit computational cost: fires for `burst_length` cons
 |---|---|---|
 | `epsilon` | `1e-4` | Finite difference step size for Hv approximation |
 | `every_n_steps` | `1000` | Base interval between burst windows |
-| `burst_length` | `10` | Number of consecutive steps to fire within each burst |
+| `burst_length` | `11` | Number of consecutive steps to fire within each burst (first step is state capture only, so N-1 data points) |
 
 ## Metrics
 
@@ -88,6 +92,6 @@ Uses a burst schedule to limit computational cost: fires for `burst_length` cons
 - **Interpretation:** Solution alignment of the direct gradient component.
 
 ### `entanglement_coherence`
-- **Formula:** Running average of `entanglement_content_cossim` over recent steps
+- **Formula:** `cos(ent_t, ent_{t-1})` — cosine similarity between consecutive entanglement vectors
 - **Range:** [-1, 1]
-- **Interpretation:** Smoothed measure of whether entanglement consistently reinforces content. Persistent positive coherence under ordered data (vs. near-zero under random) is the central experimental signal.
+- **Interpretation:** Whether the entanglement direction is stable across consecutive steps. Persistent positive coherence under ordered data (vs. near-zero under random) indicates a consistent ordering signal.

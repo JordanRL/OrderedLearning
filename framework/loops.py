@@ -519,7 +519,14 @@ def epoch_loop(runner, hook_manager, resume=None) -> dict:
                             epoch=epoch, step=global_step, batch_idx=batch_idx,
                             batch_data=batch, model=model, profiler=profiler,
                         )
-                        hook_manager.fire(HookPoint.PRE_STEP, run_ctx)
+                        model_ctx = build_model_context_if_needed(
+                            hook_manager, HookPoint.PRE_STEP, epoch,
+                            model=model, optimizer=optimizer, scheduler=scheduler,
+                            criterion=criterion, loader=loader, config=config,
+                            device=runner.device, current_batch=batch,
+                            profiler=profiler, loss_fn=loss_fn,
+                        )
+                        hook_manager.fire(HookPoint.PRE_STEP, run_ctx, model_ctx)
 
                     # TRAIN
                     result = strategy.train_step(global_step, batch=batch)
