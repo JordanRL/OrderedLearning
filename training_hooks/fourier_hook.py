@@ -42,7 +42,7 @@ class FourierHook(TrainingHook):
                        label='Low Freq Power'),
             MetricInfo('spectral_entropy', 'Normalized entropy of power spectrum',
                        'H(P) / log(p)', '0 = concentrated, 1 = uniform',
-                       label='Spectral Entropy'),
+                       label='Embedding Spectral Entropy'),
             MetricInfo('peak_frequency', 'Dominant frequency index (excluding DC)', 'argmax(P[1:p/2]) + 1',
                        label='Peak Frequency'),
             MetricInfo('peak_power', 'Power at peak frequency', 'P[peak_freq]',

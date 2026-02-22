@@ -26,6 +26,7 @@ from rich import box
 
 from console import OLConsole
 from ..base import AnalysisTool, AnalysisContext, ToolRegistry
+from ..param_labels import label_param, param_sort_key, label_aggregate, aggregate_sort_key
 from ..visualize import plot_heatmap
 
 import matplotlib.pyplot as plt
@@ -52,22 +53,12 @@ def _extract_param_columns(all_columns: list[str], prefix: str) -> dict[str, str
 
 
 def _layer_sort_key(param_name: str) -> tuple:
-    """Sort key that groups by layer number, then by component name.
+    """Sort key ordering parameters in forward-pass order.
 
-    Extracts numeric layer indices from patterns like 'h.0', 'h.12', etc.
-    Non-layer params (embeddings, final norm) sort to the edges.
+    Delegates to the shared param_labels module for pattern-based
+    ordering. Falls back to sorting unrecognized names to the end.
     """
-    # Find layer number pattern like .h.N. or .layer.N.
-    match = re.search(r'\.h\.(\d+)\.|\.layer\.(\d+)\.', param_name)
-    if match:
-        layer_num = int(match.group(1) or match.group(2))
-        # Sort by: (1=middle, layer_num, component name)
-        return (1, layer_num, param_name)
-    # Embeddings and early params sort first
-    if any(k in param_name for k in ('wte', 'wpe', 'embed')):
-        return (0, 0, param_name)
-    # Final norm / head sort last
-    return (2, 0, param_name)
+    return param_sort_key(param_name)
 
 
 def _aggregate_by_layer(columns: dict[str, str], data, steps) -> tuple[list[str], np.ndarray]:
@@ -80,31 +71,29 @@ def _aggregate_by_layer(columns: dict[str, str], data, steps) -> tuple[list[str]
         (layer_labels, aggregated_data) where aggregated_data is
         (n_layers, n_steps).
     """
+    from ..param_labels import _strip_compile_prefix
+
     groups: dict[str, list[str]] = {}
     for col, param in columns.items():
-        match = re.search(r'(h\.(\d+))', param)
+        clean = _strip_compile_prefix(param)
+        # GPT-2 naming: transformer.h.N.*
+        match = re.search(r'(h\.(\d+))', clean)
         if match:
             group = match.group(1)
-        elif any(k in param for k in ('wte', 'wpe', 'embed')):
-            group = 'embed'
-        elif 'ln_f' in param:
-            group = 'ln_f'
         else:
-            group = 'other'
+            # TransformerEncoder naming: transformer.layers.N.*
+            match = re.search(r'layers\.(\d+)', clean)
+            if match:
+                group = f'h.{match.group(1)}'
+            elif any(k in clean for k in ('wte', 'wpe', 'embed')):
+                group = 'embed'
+            elif 'ln_f' in clean:
+                group = 'ln_f'
+            else:
+                group = 'other'
         groups.setdefault(group, []).append(col)
 
-    # Sort groups: embed first, then h.0, h.1, ..., then ln_f, other
-    def group_sort_key(name):
-        if name == 'embed':
-            return (0, 0)
-        match = re.match(r'h\.(\d+)', name)
-        if match:
-            return (1, int(match.group(1)))
-        if name == 'ln_f':
-            return (2, 0)
-        return (3, 0)
-
-    sorted_groups = sorted(groups.keys(), key=group_sort_key)
+    sorted_groups = sorted(groups.keys(), key=aggregate_sort_key)
 
     labels = []
     rows = []
@@ -113,7 +102,7 @@ def _aggregate_by_layer(columns: dict[str, str], data, steps) -> tuple[list[str]
         # Average across all params in this group
         group_data = data[cols].values
         row = np.nanmean(group_data, axis=1)
-        labels.append(group)
+        labels.append(label_aggregate(group))
         rows.append(row)
 
     return labels, np.array(rows)
@@ -229,7 +218,7 @@ class LayerDynamicsTool(AnalysisTool):
                     else:
                         sorted_cols = sorted_cols[:args.top]
 
-                labels = [param_cols[c] for c in sorted_cols]
+                labels = [label_param(param_cols[c]) for c in sorted_cols]
                 matrix = strat_df[sorted_cols].values.T  # (n_params, n_steps)
 
             if matrix.size == 0:
@@ -252,7 +241,7 @@ class LayerDynamicsTool(AnalysisTool):
                 log_norm=args.log_norm,
             )
             ax.set_title(title)
-            ax.set_xlabel('step')
+            ax.set_xlabel(context.x_label)
 
             # Save
             out_path = context.output_path(f'heatmap_{strat}', [prefix])
@@ -295,7 +284,7 @@ class LayerDynamicsTool(AnalysisTool):
         )
 
         for param in ranked[:15]:
-            row = [param]
+            row = [label_param(param)]
             for strat in strategies:
                 v = all_variances[param].get(strat, 0.0)
                 row.append(f'{v:.4g}')

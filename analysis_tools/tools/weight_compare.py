@@ -13,7 +13,6 @@ Usage:
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from itertools import combinations
 
@@ -24,55 +23,17 @@ from rich import box
 
 from console import OLConsole
 from ..base import AnalysisTool, AnalysisContext, ToolRegistry
+from ..data_loader import load_state_dict
+from ..param_labels import label_param, param_sort_key
 from ..style import get_strategy_colors
 from ..visualize import OLFigure, plot_bar, plot_heatmap
 
 import matplotlib.pyplot as plt
 
 
-def _load_state_dict(strategy_dir: Path, strategy_name: str) -> dict | None:
-    """Load model state_dict from a strategy's final weights file.
-
-    Looks for {strategy_name}_final.pt in the strategy directory.
-    Returns the state_dict, or None if not found.
-    """
-    import torch
-
-    weight_path = strategy_dir / f'{strategy_name}_final.pt'
-    if not weight_path.exists():
-        # Also try any *_final.pt in case naming differs
-        candidates = list(strategy_dir.glob('*_final.pt'))
-        if candidates:
-            weight_path = candidates[0]
-        else:
-            return None
-
-    checkpoint = torch.load(weight_path, map_location='cpu', weights_only=False)
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        return checkpoint['model_state_dict']
-    # Might be a raw state dict
-    return checkpoint
-
-
 def _layer_sort_key(name: str) -> tuple:
-    """Sort key for parameter names by layer order."""
-    match = re.search(r'\.h\.(\d+)\.|\.layer\.(\d+)\.', name)
-    if match:
-        num = int(match.group(1) or match.group(2))
-        return (1, num, name)
-    if any(k in name for k in ('wte', 'wpe', 'embed')):
-        return (0, 0, name)
-    return (2, 0, name)
-
-
-def _short_name(param_name: str) -> str:
-    """Shorten parameter name for display."""
-    # Remove common prefixes
-    name = param_name
-    for prefix in ('transformer.', 'model.'):
-        if name.startswith(prefix):
-            name = name[len(prefix):]
-    return name
+    """Sort key ordering parameters in forward-pass order."""
+    return param_sort_key(name)
 
 
 def _compute_svd_spectrum(tensor, max_rank: int = 50) -> np.ndarray:
@@ -140,8 +101,8 @@ class WeightCompareTool(AnalysisTool):
         state_dicts: dict[str, dict] = {}
 
         for strat in strategies:
-            strat_dir = output_dir / context.experiment_name / strat
-            sd = _load_state_dict(strat_dir, strat)
+            sd = load_state_dict(context.experiment_name, strat,
+                                 output_dir=str(output_dir))
             if sd is not None:
                 state_dicts[strat] = sd
                 console.print(
@@ -149,6 +110,7 @@ class WeightCompareTool(AnalysisTool):
                     f"[detail]({len(sd)} parameters)[/detail]"
                 )
             else:
+                strat_dir = output_dir / context.experiment_name / strat
                 console.print(
                     f"[warning.content]No final weights found for "
                     f"strategy '{strat}' in {strat_dir}[/warning.content]"
@@ -225,7 +187,7 @@ class WeightCompareTool(AnalysisTool):
             display_params = sorted(diffs, key=diffs.get, reverse=True)[:args.top_layers]
             display_params = sorted(display_params, key=_layer_sort_key)
 
-        short_labels = [_short_name(p) for p in display_params]
+        short_labels = [label_param(p) for p in display_params]
 
         # Grouped bar chart
         n_strats = len(strategies)
@@ -300,7 +262,7 @@ class WeightCompareTool(AnalysisTool):
                 if len(s) > 0:
                     ax.plot(range(len(s)), s, color=strat_colors[strat],
                             label=strat, linewidth=1.2)
-            ax.set_title(_short_name(param), fontsize=9)
+            ax.set_title(label_param(param), fontsize=9)
             ax.set_xlabel('rank')
             ax.set_ylabel('σ / σ₁')
             if i == 0:

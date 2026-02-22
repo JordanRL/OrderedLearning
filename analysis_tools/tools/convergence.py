@@ -170,7 +170,8 @@ class ConvergenceTool(AnalysisTool):
         if use_grid_strategy:
             metric_labels = [context.resolver.label(m) for m in metrics]
             met_colors = get_metric_colors(metric_labels)
-            fig = OLFigure(n_plots=len(strategies), title=exp_title)
+            fig = OLFigure(n_plots=len(strategies), title=exp_title,
+                           share_x=False)
 
             for i, strat in enumerate(strategies):
                 ax = fig.axes[i]
@@ -188,7 +189,7 @@ class ConvergenceTool(AnalysisTool):
                     ax.axhline(y=threshold, color='#8A8F98', linestyle=':',
                                linewidth=1)
                 ax.set_title(strat)
-                ax.set_xlabel('step')
+                ax.set_xlabel(context.x_label)
                 ax.legend()
         else:
             fig = OLFigure(n_plots=len(metrics), title=exp_title)
@@ -209,7 +210,7 @@ class ConvergenceTool(AnalysisTool):
                     ax.axhline(y=threshold, color='#8A8F98', linestyle=':',
                                linewidth=1, label=f'threshold = {threshold}')
                 ax.set_title(context.resolver.label(metric))
-                ax.set_xlabel('step')
+                ax.set_xlabel(context.x_label)
                 ax.legend()
 
         path = fig.save(context.output_path('convergence', metrics), dpi=dpi)
@@ -295,7 +296,8 @@ class ConvergenceTool(AnalysisTool):
         if use_grid_strategy:
             metric_labels = [context.resolver.label(m) for m in metrics]
             met_colors = get_metric_colors(metric_labels)
-            fig = OLFigure(n_plots=len(strategies), title=exp_title)
+            fig = OLFigure(n_plots=len(strategies), title=exp_title,
+                           share_x=False)
 
             for i, strat in enumerate(strategies):
                 ax = fig.axes[i]
@@ -316,7 +318,7 @@ class ConvergenceTool(AnalysisTool):
                         ax.plot(steps, norm, color=color, label=label,
                                 linewidth=1.5)
                 ax.set_title(strat)
-                ax.set_xlabel('step')
+                ax.set_xlabel(context.x_label)
                 ax.set_ylabel('normalized')
                 ax.set_ylim(-0.05, 1.05)
                 ax.legend()
@@ -343,7 +345,7 @@ class ConvergenceTool(AnalysisTool):
                         ax.plot(steps, norm, color=color, label=strat,
                                 linewidth=1.5)
                 ax.set_title(f'{metric_label} (normalized)')
-                ax.set_xlabel('step')
+                ax.set_xlabel(context.x_label)
                 ax.set_ylabel('normalized')
                 ax.set_ylim(-0.05, 1.05)
                 ax.legend()

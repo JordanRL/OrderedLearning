@@ -192,3 +192,42 @@ def load_experiment_config(
                 return json.load(f)
 
     return None
+
+
+def load_state_dict(
+    experiment_name: str,
+    strategy_name: str,
+    output_dir: str = 'output',
+) -> dict | None:
+    """Load model state_dict from a strategy's final weights file.
+
+    Looks for ``{strategy_name}_final.pt`` in the strategy directory.
+    Handles both envelope checkpoints (with ``model_state_dict`` key)
+    and raw state dicts.
+
+    Args:
+        experiment_name: Name of the experiment directory.
+        strategy_name: Name of the strategy subdirectory.
+        output_dir: Base output directory (default: 'output').
+
+    Returns:
+        State dict mapping parameter names to tensors (on CPU),
+        or None if no weights file is found.
+    """
+    import torch
+
+    strategy_dir = Path(output_dir) / experiment_name / strategy_name
+    weight_path = strategy_dir / f'{strategy_name}_final.pt'
+
+    if not weight_path.exists():
+        # Try any *_final.pt in case naming differs
+        candidates = list(strategy_dir.glob('*_final.pt'))
+        if candidates:
+            weight_path = candidates[0]
+        else:
+            return None
+
+    checkpoint = torch.load(weight_path, map_location='cpu', weights_only=False)
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        return checkpoint['model_state_dict']
+    return checkpoint

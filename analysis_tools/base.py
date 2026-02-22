@@ -46,6 +46,25 @@ class AnalysisContext:
     experiment_config: dict | None = None
     resolver: Any = None
 
+    @property
+    def x_label(self) -> str:
+        """Return the correct x-axis label based on experiment loop type.
+
+        Checks experiment_config for an explicit 'loop_type' key first,
+        then falls back to heuristic: configs with 'epochs' (but not
+        'total_steps') are epoch-based.
+        """
+        if self.experiment_config is not None:
+            loop_type = self.experiment_config.get('loop_type')
+            if loop_type == 'epoch':
+                return 'epoch'
+            if loop_type == 'step':
+                return 'step'
+            # Heuristic fallback for configs without explicit loop_type
+            if 'epochs' in self.experiment_config and 'total_steps' not in self.experiment_config:
+                return 'epoch'
+        return 'step'
+
     def output_path(self, view: str, metrics: list[str] | None = None,
                     ext: str | None = None) -> Path:
         """Build a consistent output file path.

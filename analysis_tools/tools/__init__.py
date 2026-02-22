@@ -5,3 +5,6 @@ from . import correlation  # noqa: F401
 from . import convergence  # noqa: F401
 from . import layer_dynamics  # noqa: F401
 from . import weight_compare  # noqa: F401
+from . import weight_heatmap  # noqa: F401
+from . import activation_probe  # noqa: F401
+from . import area_plot  # noqa: F401

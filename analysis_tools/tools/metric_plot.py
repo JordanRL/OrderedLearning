@@ -40,6 +40,11 @@ class MetricPlotTool(AnalysisTool):
             dest='log_scale',
             help='Use log scale on y-axis',
         )
+        parser.add_argument(
+            '--share-y', action='store_true', default=False,
+            dest='share_y',
+            help='Use consistent y-axis scale across all subplots',
+        )
 
     def describe_outputs(self) -> list[str]:
         return [
@@ -55,6 +60,7 @@ class MetricPlotTool(AnalysisTool):
         smooth = getattr(args, 'smooth', None)
         dpi = getattr(args, 'dpi', 300)
         log_scale = getattr(args, 'log_scale', False)
+        share_y = getattr(args, 'share_y', False)
 
         # Validate requested metrics exist
         available_cols = set(context.data.columns) - {'step', 'strategy'}
@@ -77,23 +83,24 @@ class MetricPlotTool(AnalysisTool):
 
         if layout == 'overlay':
             self._plot_overlay(context, valid_metrics, strategies, smooth,
-                               log_scale, dpi)
+                               log_scale, share_y, dpi)
         elif group_by == 'strategy':
             self._plot_grid_by_strategy(context, valid_metrics, strategies,
-                                        smooth, log_scale, dpi)
+                                        smooth, log_scale, share_y, dpi)
         else:
             self._plot_grid_by_metric(context, valid_metrics, strategies,
-                                      smooth, log_scale, dpi)
+                                      smooth, log_scale, share_y, dpi)
 
         # Print summary table
         self._print_summary(context, valid_metrics, strategies)
 
     def _plot_overlay(self, context, metrics, strategies, smooth, log_scale,
-                      dpi):
+                      share_y, dpi):
         """One subplot per metric, all strategies overlaid with strategy colors."""
         console = OLConsole()
         strat_colors = get_strategy_colors(strategies)
-        fig = OLFigure(n_plots=len(metrics), title=context.experiment_name if context.args.experiment_title else None)
+        fig = OLFigure(n_plots=len(metrics), title=context.experiment_name if context.args.experiment_title else None,
+                       share_y=share_y)
 
         for i, metric in enumerate(metrics):
             ax = fig.axes[i]
@@ -111,18 +118,19 @@ class MetricPlotTool(AnalysisTool):
                     smooth=smooth, log_scale=log_scale,
                 )
             ax.set_title(context.resolver.label(metric))
-            ax.set_xlabel('step')
+            ax.set_xlabel(context.x_label)
             ax.legend()
 
         path = fig.save(context.output_path('overlay', metrics), dpi=dpi)
         console.print(f"[label]Saved:[/label] [path]{path}[/path]")
 
     def _plot_grid_by_strategy(self, context, metrics, strategies, smooth,
-                               log_scale, dpi):
+                               log_scale, share_y, dpi):
         """One subplot per strategy, multiple metrics with metric colors."""
         console = OLConsole()
         met_colors = get_metric_colors(metrics)
-        fig = OLFigure(n_plots=len(strategies), title=context.experiment_name if context.args.experiment_title else None)
+        fig = OLFigure(n_plots=len(strategies), title=context.experiment_name if context.args.experiment_title else None,
+                       share_x=False, share_y=share_y)
 
         for i, strat in enumerate(strategies):
             ax = fig.axes[i]
@@ -140,18 +148,19 @@ class MetricPlotTool(AnalysisTool):
                     smooth=smooth, log_scale=log_scale,
                 )
             ax.set_title(strat)
-            ax.set_xlabel('step')
+            ax.set_xlabel(context.x_label)
             ax.legend()
 
         path = fig.save(context.output_path('grid_strategy', metrics), dpi=dpi)
         console.print(f"[label]Saved:[/label] [path]{path}[/path]")
 
     def _plot_grid_by_metric(self, context, metrics, strategies, smooth,
-                             log_scale, dpi):
+                             log_scale, share_y, dpi):
         """One subplot per metric, all strategies with strategy colors."""
         console = OLConsole()
         strat_colors = get_strategy_colors(strategies)
-        fig = OLFigure(n_plots=len(metrics), title=context.experiment_name if context.args.experiment_title else None)
+        fig = OLFigure(n_plots=len(metrics), title=context.experiment_name if context.args.experiment_title else None,
+                       share_y=share_y)
 
         for i, metric in enumerate(metrics):
             ax = fig.axes[i]
@@ -169,7 +178,7 @@ class MetricPlotTool(AnalysisTool):
                     smooth=smooth, log_scale=log_scale,
                 )
             ax.set_title(context.resolver.label(metric))
-            ax.set_xlabel('step')
+            ax.set_xlabel(context.x_label)
             ax.legend()
 
         path = fig.save(context.output_path('grid_metric', metrics), dpi=dpi)
