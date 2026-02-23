@@ -29,9 +29,7 @@ Examples:
 
 import sys
 
-# Enable TF32 tensor cores for float32 matmuls (Ampere+ GPUs)
 import torch
-torch.set_float32_matmul_precision('high')
 
 from console import OLConsole, ConsoleConfig, ConsoleMode
 from framework import ExperimentRegistry, step_loop, epoch_loop
@@ -269,6 +267,9 @@ def main():
         mode = ConsoleMode.NORMAL
     console_config = ConsoleConfig(mode=mode, show_time=False)
     console = OLConsole(console_config)
+
+    # Set matmul precision (before any model construction)
+    torch.set_float32_matmul_precision(getattr(args, 'matmul_precision', 'highest'))
 
     # Handle hook inspection (--hooks-list, --hooks-describe)
     if handle_hook_inspection(args):

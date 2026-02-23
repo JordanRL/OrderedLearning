@@ -234,6 +234,10 @@ class ModelDataContext:
             {k: v.to(self._device) for k, v in self._pre_epoch_state['model'].items()}
         )
         self._optimizer.load_state_dict(self._pre_epoch_state['optimizer'])
+        if 'rng_cpu' in self._pre_epoch_state:
+            torch.random.set_rng_state(self._pre_epoch_state['rng_cpu'])
+            if self._pre_epoch_state.get('rng_cuda') is not None:
+                torch.cuda.set_rng_state(self._pre_epoch_state['rng_cuda'], self._device)
 
     def apply_perturbation(self, direction: dict[str, torch.Tensor], scale: float):
         """Perturb model weights: theta <- theta + scale * direction.

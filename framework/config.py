@@ -26,7 +26,7 @@ class BaseConfig:
     profile_hooks: bool = False
 
     # Compilation / runtime
-    no_compile: bool = False
+    with_compile: bool = False
     no_determinism: bool = False
 
     def __post_init__(self):

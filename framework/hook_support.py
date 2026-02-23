@@ -131,7 +131,17 @@ def capture_pre_epoch_state_if_needed(hook_manager, model, optimizer, epoch):
         return None
 
     import copy
+    import torch
+
+    try:
+        device = next(model.parameters()).device
+    except StopIteration:
+        device = None
+
     return {
         'model': {k: v.cpu().clone() for k, v in model.state_dict().items()},
         'optimizer': copy.deepcopy(optimizer.state_dict()),
+        'rng_cpu': torch.random.get_rng_state(),
+        'rng_cuda': (torch.cuda.get_rng_state(device)
+                     if device is not None and device.type == 'cuda' else None),
     }

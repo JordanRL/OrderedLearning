@@ -13,6 +13,10 @@ import torch
 
 def set_seeds(seed: int):
     """Set random seeds for reproducibility across all backends."""
+    # PYTHONHASHSEED only affects hash randomization when set before the
+    # interpreter starts, but we set it here for documentation/signaling
+    # and for libraries that check it at runtime.
+    os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)

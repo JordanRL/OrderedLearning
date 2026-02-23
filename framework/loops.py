@@ -151,6 +151,83 @@ def validate_checkpoint(experiment_dir, model, optimizer, scheduler, step_or_epo
         )
 
 
+class EmergencyCheckpoint:
+    """Holds in-memory snapshot at a known-good training boundary.
+
+    Loops call capture() at safe restart points (epoch start for epoch_loop,
+    periodic intervals for step_loop). Emergency handlers call save() to
+    write the snapshot to disk.
+
+    Automatically installs a SIGTERM handler so that pod preemption,
+    ``docker stop``, and job scheduler termination trigger a clean
+    checkpoint save before exit.
+    """
+
+    def __init__(self, experiment_dir, hook_manager=None):
+        self._experiment_dir = experiment_dir
+        self._hook_manager = hook_manager
+        self._state = None
+        self._step_or_epoch = None
+        self._install_signal_handler()
+
+    def _install_signal_handler(self):
+        """Register SIGTERM handler to save emergency checkpoint on termination."""
+        import signal
+        signal.signal(signal.SIGTERM, self._handle_sigterm)
+
+    def _handle_sigterm(self, signum, frame):
+        """SIGTERM handler — save checkpoint and exit cleanly."""
+        import signal
+        # Reset to default so a second SIGTERM terminates immediately
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+
+        from console import OLConsole
+        console = OLConsole()
+        console.print_warning(
+            f"SIGTERM received. "
+            f"Saving emergency checkpoint from {self._step_or_epoch}..."
+        )
+        path = self.save()
+        if path:
+            console.print_complete(f"Emergency checkpoint saved: {path}")
+        raise SystemExit(0)
+
+    def capture(self, model, optimizer, scheduler, step_or_epoch, runner=None):
+        """Snapshot current training state to CPU memory."""
+        import copy
+        import torch
+
+        self._step_or_epoch = step_or_epoch
+        self._state = {
+            'model_state_dict': {k: v.cpu().clone()
+                                  for k, v in model.state_dict().items()},
+            'optimizer_state_dict': copy.deepcopy(optimizer.state_dict()),
+            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+            'rng_states': _get_rng_states(),
+            'training_state': runner.save_training_state() if runner else None,
+            'environment': get_environment_info(),
+        }
+
+    def save(self):
+        """Write captured snapshot to disk and flush sinks. Returns path or None."""
+        import os
+        import torch
+
+        if self._state is None:
+            return None
+        ckpt_dir = os.path.join(self._experiment_dir, 'checkpoints')
+        os.makedirs(ckpt_dir, exist_ok=True)
+        path = os.path.join(ckpt_dir, f'checkpoint_{self._step_or_epoch}.pt')
+        torch.save({'step': self._step_or_epoch, **self._state}, path)
+        if self._hook_manager:
+            self._hook_manager.flush_sinks()
+        return path
+
+    @property
+    def step_or_epoch(self):
+        return self._step_or_epoch
+
+
 def step_loop(runner, hook_manager, resume=None) -> dict:
     """Step-based training loop. Scheduler steps every training step.
 
@@ -195,6 +272,7 @@ def step_loop(runner, hook_manager, resume=None) -> dict:
 
         experiment_dir = runner.prepare_output_dir(strategy_name)
         runner.save_config(experiment_dir, extra={'strategy': strategy_name})
+        emergency = EmergencyCheckpoint(experiment_dir, hook_manager)
         trajectory = [] if config.record_trajectory else None
 
         profiler = hook_manager.profiler if hook_manager else None
@@ -241,6 +319,7 @@ def step_loop(runner, hook_manager, resume=None) -> dict:
 
         last_eval_result = None
         training_start = time.time()
+        emergency.capture(model, optimizer, scheduler, start_step, runner)
         try:
             for step in range(start_step, total_steps + 1):
 
@@ -309,6 +388,8 @@ def step_loop(runner, hook_manager, resume=None) -> dict:
                             'strategy': strategy_name,
                         })
 
+                    emergency.capture(model, optimizer, scheduler, step, runner)
+
                 # --- Evaluation (periodic) ---
                 if step % config.eval_every == 0:
                     last_eval_result = runner.evaluate(model, step)
@@ -344,16 +425,12 @@ def step_loop(runner, hook_manager, resume=None) -> dict:
             from console import OLConsole
             _console = OLConsole()
             _console.print_warning(
-                f"Training interrupted at step {step}. Saving emergency checkpoint..."
+                f"Training interrupted at step {step}. "
+                f"Saving emergency checkpoint from step {emergency.step_or_epoch}..."
             )
-            training_state = runner.save_training_state()
-            save_checkpoint(experiment_dir, model, optimizer, scheduler, step,
-                            training_state=training_state)
-            _console.print_complete(
-                f"Emergency checkpoint saved at step {step} in {experiment_dir}/checkpoints/"
-            )
-            if hook_manager:
-                hook_manager.flush_sinks()
+            path = emergency.save()
+            if path:
+                _console.print_complete(f"Emergency checkpoint saved: {path}")
             raise
 
         display.training_progress_end()
@@ -433,6 +510,7 @@ def epoch_loop(runner, hook_manager, resume=None) -> dict:
 
         experiment_dir = runner.prepare_output_dir(strategy_name)
         runner.save_config(experiment_dir, extra={'strategy': strategy_name})
+        emergency = EmergencyCheckpoint(experiment_dir, hook_manager)
         trajectory = [] if config.record_trajectory else None
 
         profiler = hook_manager.profiler if hook_manager else None
@@ -471,6 +549,7 @@ def epoch_loop(runner, hook_manager, resume=None) -> dict:
         training_start = time.time()
         try:
             for epoch in range(start_epoch, total_epochs):
+                emergency.capture(model, optimizer, scheduler, epoch, runner)
                 loader = runner.get_epoch_loader(data, epoch)
                 # Store for GrokkingRunner.evaluate()
                 if hasattr(runner, '_current_train_loader'):
@@ -654,16 +733,12 @@ def epoch_loop(runner, hook_manager, resume=None) -> dict:
             from console import OLConsole
             _console = OLConsole()
             _console.print_warning(
-                f"Training interrupted at epoch {epoch}. Saving emergency checkpoint..."
+                f"Training interrupted at epoch {epoch}. "
+                f"Saving emergency checkpoint from epoch start ({emergency.step_or_epoch})..."
             )
-            training_state = runner.save_training_state()
-            save_checkpoint(experiment_dir, model, optimizer, scheduler, epoch,
-                            training_state=training_state)
-            _console.print_complete(
-                f"Emergency checkpoint saved at epoch {epoch} in {experiment_dir}/checkpoints/"
-            )
-            if hook_manager:
-                hook_manager.flush_sinks()
+            path = emergency.save()
+            if path:
+                _console.print_complete(f"Emergency checkpoint saved: {path}")
             raise
 
         display.epoch_progress_end()

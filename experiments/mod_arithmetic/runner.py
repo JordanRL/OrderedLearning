@@ -121,6 +121,8 @@ class ModArithmeticRunner(GrokkingRunner):
                             help=f"Number of test pairs (default: {defaults.test_size})")
         parser.add_argument('--snapshot-every', type=int, default=defaults.snapshot_every,
                             help=f"Snapshot interval (default: {defaults.snapshot_every})")
+        parser.add_argument('--eval-every', type=int, default=defaults.eval_every,
+                            help=f"Evaluation interval (default: {defaults.eval_every})")
 
     @classmethod
     def build_config(cls, args):
@@ -134,10 +136,11 @@ class ModArithmeticRunner(GrokkingRunner):
             batch_size=args.batch_size,
             stride=args.stride,
             snapshot_every=args.snapshot_every,
+            eval_every=args.eval_every,
             seed=args.seed,
             output_dir=args.output_dir,
             record_trajectory=args.record_trajectory,
-            no_compile=args.no_compile,
+            with_compile=args.with_compile,
         )
 
     # === Required by framework ===
@@ -152,7 +155,7 @@ class ModArithmeticRunner(GrokkingRunner):
             self.config.p, self.config.embed_dim,
             self.config.num_heads, self.config.layers,
         ).to(self.device)
-        if not self.config.no_compile:
+        if self.config.with_compile:
             # Suppress symbolic shape warnings from torch.compile tracing
             logging.getLogger("torch.fx.experimental.symbolic_shapes").setLevel(logging.ERROR)
             model = torch.compile(model, dynamic=False)

@@ -720,6 +720,12 @@ class HookManager:
 
         # Fire interventions (when ModelDataContext is provided)
         if model_ctx is not None:
+            has_interventions = any(
+                isinstance(h, InterventionHook) for h in hooks_at_point
+            )
+            if has_interventions:
+                guardian_token = model_ctx.save_checkpoint(full=True)
+
             for hook in hooks_at_point:
                 if not isinstance(hook, InterventionHook):
                     continue
@@ -735,6 +741,10 @@ class HookManager:
                         all_metrics[f"{hook.name}/{key}"] = value
                 if show_progress:
                     console.update_progress_task(self._TASK_HOOKS, advance=1)
+
+            if has_interventions:
+                model_ctx.restore_checkpoint(guardian_token)
+                model_ctx.discard_checkpoint(guardian_token)
 
         if show_progress:
             console.remove_progress_task(self._TASK_HOOKS)

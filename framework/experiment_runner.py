@@ -25,7 +25,10 @@ from console import OLConsole
 from .config import BaseConfig
 from .eval_result import EvalResult
 from .strategy_runner import StrategyRunner, StepResult
-from .utils import set_seeds, set_determinism, snapshot_params, get_environment_info
+from .utils import (
+    set_seeds, set_determinism, snapshot_params,
+    get_environment_info, check_environment_compatibility,
+)
 from .models import MODEL_CONFIGS, get_lr_scheduler
 from .cli import add_eval_target_args
 from . import display
@@ -360,9 +363,12 @@ class ExperimentRunner(ABC):
             experiment_dir = os.path.join(self.config.output_dir, name)
         os.makedirs(experiment_dir, exist_ok=True)
 
-        # Warn about pre-existing run data
+        # Check for pre-existing run data and environment compatibility
         summary_path = os.path.join(experiment_dir, 'summary.json')
         config_path = os.path.join(experiment_dir, 'experiment_config.json')
+        if os.path.exists(config_path):
+            self._check_environment_compatibility(config_path)
+
         if os.path.exists(summary_path):
             self.console.print_warning(
                 f"Output directory contains a completed previous run (summary.json exists). "
@@ -376,6 +382,46 @@ class ExperimentRunner(ABC):
             )
 
         return experiment_dir
+
+    def _check_environment_compatibility(self, config_path: str):
+        """Check current environment against a saved experiment_config.json.
+
+        If the saved config contains an 'environment' block and the current
+        environment differs in reproducibility-relevant ways, prints an error
+        with details and exits before any data is written to disk.
+        """
+        import sys
+
+        try:
+            with open(config_path, 'r') as f:
+                saved_config = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return  # Can't read config — skip check
+
+        saved_env = saved_config.get('environment')
+        if not saved_env:
+            return  # No environment block — skip check
+
+        warnings = check_environment_compatibility(saved_env)
+        if not warnings:
+            return
+
+        self.console.print()
+        self.console.print_error(
+            f"Environment mismatch with existing data in {config_path}"
+        )
+        self.console.print()
+        self.console.print("[bold]Differences:[/bold]")
+        for w in warnings:
+            self.console.print(f"  [metric.degraded]•[/metric.degraded] {w}")
+        self.console.print()
+        self.console.print(
+            "[label]To proceed, either:[/label]\n"
+            f"  1. Delete [path]{config_path}[/path] to accept the new environment\n"
+            "  2. Update the current environment to match the existing data"
+        )
+        self.console.print()
+        sys.exit(1)
 
     def save_config(self, experiment_dir: str, extra: dict = None):
         """Save experiment configuration to JSON (includes environment info)."""

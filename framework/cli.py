@@ -40,11 +40,15 @@ def add_common_args(parser, defaults=None):
                        help='Show only the progress bar; suppress all other output')
     group.add_argument('--no-console-output', action='store_true', default=False,
                        help='Suppress all console output')
-    group.add_argument('--no-compile', action='store_true', default=False,
-                       help='Disable torch.compile (useful for debugging or unsupported environments)')
+    group.add_argument('--with-compile', action='store_true', default=False,
+                       help='Enable torch.compile for optimized GPU kernels')
     group.add_argument('--no-determinism', action='store_true', default=False,
                        help='Disable torch deterministic algorithms '
                             '(seeds still set, but allows non-deterministic CUDA ops)')
+    group.add_argument('--matmul-precision', type=str, default='highest',
+                       choices=['highest', 'high', 'medium'],
+                       help='float32 matmul precision (default: highest for strict determinism; '
+                            "'high' enables TF32 on Ampere+ GPUs)")
     group.add_argument('--resume', action='store_true', default=False,
                        help='Resume training from the most recent checkpoint in the output directory')
 
