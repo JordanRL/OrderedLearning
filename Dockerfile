@@ -22,14 +22,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only requirements first for layer caching
-COPY requirements.txt ./
+COPY requirements-lock.txt ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-lock.txt
 
 # Remove the requirements file (code is pulled at startup, not baked in)
-RUN rm -f requirements.txt
+RUN rm -f requirements-lock.txt
 
 # Copy the startup script and make it executable
 COPY entrypoint.sh /entrypoint.sh
