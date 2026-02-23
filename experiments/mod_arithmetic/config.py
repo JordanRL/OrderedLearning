@@ -20,6 +20,7 @@ class ModArithmeticConfig(BaseConfig):
     num_heads: int = 4
     layers: int = 2
     weight_decay: float = 0.1
+    optimizer: str = 'adamw'  # 'adamw' or 'adam'
 
     # Override BaseConfig defaults for epoch-based experiment
     eval_every: int = 1              # evaluate every epoch
@@ -45,3 +46,5 @@ class ModArithmeticConfig(BaseConfig):
             raise ValueError(f"num_heads must be > 0, got {self.num_heads}")
         if self.layers <= 0:
             raise ValueError(f"layers must be > 0, got {self.layers}")
+        if self.optimizer not in ('adamw', 'adam'):
+            raise ValueError(f"optimizer must be 'adamw' or 'adam', got '{self.optimizer}'")

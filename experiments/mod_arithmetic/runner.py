@@ -4,6 +4,7 @@ import logging
 import math
 
 import torch
+import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from framework import GrokkingRunner, ExperimentRegistry, SimpleTrainStep
@@ -129,6 +130,11 @@ class ModArithmeticRunner(GrokkingRunner):
                             help=f"Number of attention heads (default: {defaults.num_heads})")
         parser.add_argument('--layers', type=int, default=defaults.layers,
                             help=f"Number of transformer layers (default: {defaults.layers})")
+        parser.add_argument('--weight-decay', type=float, default=defaults.weight_decay,
+                            help=f"Weight decay (default: {defaults.weight_decay})")
+        parser.add_argument('--optimizer', type=str, default=defaults.optimizer,
+                            choices=['adamw', 'adam'],
+                            help=f"Optimizer type (default: {defaults.optimizer})")
 
     @classmethod
     def build_config(cls, args):
@@ -146,6 +152,8 @@ class ModArithmeticRunner(GrokkingRunner):
             embed_dim=args.embed_dim,
             num_heads=args.num_heads,
             layers=args.layers,
+            weight_decay=args.weight_decay,
+            optimizer=args.optimizer,
             seed=args.seed,
             output_dir=args.output_dir,
             record_trajectory=args.record_trajectory,
@@ -173,6 +181,14 @@ class ModArithmeticRunner(GrokkingRunner):
             f"[label]Model parameters:[/label] [value.count]{param_count:,}[/value.count]"
         )
         return model
+
+    def create_optimizer(self, model):
+        optimizer_cls = optim.Adam if self.config.optimizer == 'adam' else optim.AdamW
+        return optimizer_cls(
+            model.parameters(),
+            lr=self.config.lr,
+            weight_decay=self.config.weight_decay,
+        )
 
     def create_data(self, strategy_name):
         """Generate data once and cache. Returns list of train DataLoaders."""
@@ -267,6 +283,7 @@ class ModArithmeticRunner(GrokkingRunner):
             'Epochs': str(cfg.epochs),
             'Target Acc': f"{cfg.target_acc}%",
             'LR': f"{cfg.lr} -> {cfg.min_lr}",
+            'Optimizer': cfg.optimizer.upper(),
             'Weight Decay': str(cfg.weight_decay),
             'Batch Size': str(cfg.batch_size),
             'Model': f"{cfg.embed_dim}d / {cfg.num_heads}h / {cfg.layers}L",
