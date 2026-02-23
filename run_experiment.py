@@ -318,6 +318,28 @@ def main():
             config.checkpoint_every = args.validate_checkpoints
     if getattr(args, 'no_determinism', False):
         config.no_determinism = True
+
+    # Reject flag combinations that make checkpoint validation meaningless
+    if config.validate_checkpoints:
+        problems = []
+        if config.no_determinism:
+            problems.append(
+                "--no-determinism disables deterministic algorithms, "
+                "so checkpoint validation cannot produce bit-identical state"
+            )
+        if config.with_compile:
+            problems.append(
+                "--with-compile can introduce non-determinism from "
+                "Triton/inductor kernel generation"
+            )
+        if problems:
+            console.print_error(
+                "--validate-checkpoints requires fully deterministic execution"
+            )
+            for p in problems:
+                console.print(f"  [metric.degraded]•[/metric.degraded] {p}")
+            sys.exit(1)
+
     hook_manager = build_hook_manager(
         args, config=config,
         wandb_group_prefix=experiment_name,

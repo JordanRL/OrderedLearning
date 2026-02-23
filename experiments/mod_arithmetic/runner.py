@@ -123,6 +123,12 @@ class ModArithmeticRunner(GrokkingRunner):
                             help=f"Snapshot interval (default: {defaults.snapshot_every})")
         parser.add_argument('--eval-every', type=int, default=defaults.eval_every,
                             help=f"Evaluation interval (default: {defaults.eval_every})")
+        parser.add_argument('--embed-dim', type=int, default=defaults.embed_dim,
+                            help=f"Transformer embedding dimension (default: {defaults.embed_dim})")
+        parser.add_argument('--num-heads', type=int, default=defaults.num_heads,
+                            help=f"Number of attention heads (default: {defaults.num_heads})")
+        parser.add_argument('--layers', type=int, default=defaults.layers,
+                            help=f"Number of transformer layers (default: {defaults.layers})")
 
     @classmethod
     def build_config(cls, args):
@@ -137,6 +143,9 @@ class ModArithmeticRunner(GrokkingRunner):
             stride=args.stride,
             snapshot_every=args.snapshot_every,
             eval_every=args.eval_every,
+            embed_dim=args.embed_dim,
+            num_heads=args.num_heads,
+            layers=args.layers,
             seed=args.seed,
             output_dir=args.output_dir,
             record_trajectory=args.record_trajectory,

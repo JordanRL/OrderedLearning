@@ -217,7 +217,7 @@ class EmergencyCheckpoint:
             return None
         ckpt_dir = os.path.join(self._experiment_dir, 'checkpoints')
         os.makedirs(ckpt_dir, exist_ok=True)
-        path = os.path.join(ckpt_dir, f'checkpoint_{self._step_or_epoch}.pt')
+        path = os.path.join(ckpt_dir, f'emergency_{self._step_or_epoch}.pt')
         torch.save({'step': self._step_or_epoch, **self._state}, path)
         if self._hook_manager:
             self._hook_manager.flush_sinks()

@@ -69,12 +69,13 @@ def check_resume_conflicts(argv: list[str]) -> list[str]:
 def find_latest_checkpoint(experiment_dir: str) -> tuple[str, int] | None:
     """Find the most recent checkpoint in an experiment directory.
 
-    Globs checkpoints/checkpoint_*.pt, extracts the step/epoch number
-    from the filename, and returns (path, number) for the highest.
-    Returns None if no checkpoints exist.
+    Searches for both regular checkpoints (checkpoint_*.pt) and emergency
+    checkpoints (emergency_*.pt), returning whichever has the highest
+    step/epoch number. Returns (path, number) or None if no checkpoints exist.
     """
-    pattern = os.path.join(experiment_dir, 'checkpoints', 'checkpoint_*.pt')
-    files = glob.glob(pattern)
+    ckpt_dir = os.path.join(experiment_dir, 'checkpoints')
+    files = glob.glob(os.path.join(ckpt_dir, 'checkpoint_*.pt'))
+    files += glob.glob(os.path.join(ckpt_dir, 'emergency_*.pt'))
     if not files:
         return None
 
@@ -82,7 +83,7 @@ def find_latest_checkpoint(experiment_dir: str) -> tuple[str, int] | None:
     best_num = -1
     for path in files:
         basename = os.path.basename(path)
-        match = re.search(r'checkpoint_(\d+)\.pt$', basename)
+        match = re.search(r'(?:checkpoint|emergency)_(\d+)\.pt$', basename)
         if match:
             num = int(match.group(1))
             if num > best_num:
