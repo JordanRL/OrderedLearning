@@ -1,18 +1,18 @@
 # Pinned dependency versions for exact reproducibility.
 # Use this file when replicating paper results.
 # For general development, use requirements.txt instead.
-torch==2.8.0
-numpy==2.0.0
-rich==14.0.0
-pyfiglet==1.0.0
+torch==2.9.1
+numpy==2.4.0
+rich==14.3.1
+pyfiglet==1.0.4
 colour==0.1.5
-pyperclip==1.9.0
-readchar==4.0.0
-transformers==4.45.0
-datasets==3.0.0
-wandb==0.18.0
+pyperclip==1.11.0
+readchar==4.2.1
+transformers==5.0.0
+datasets==4.5.0
+wandb==0.24.2
 
 # Optional (analysis plotting and smoothing)
-matplotlib==3.9.0
-scipy==1.14.0
-pandas==2.2.0
+matplotlib==3.10.8
+scipy==1.17.0
+pandas==3.0.0
