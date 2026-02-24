@@ -1,16 +1,15 @@
 """Dataset loaders for modular arithmetic experiments."""
 
-import torch
-from torch.utils.data import DataLoader
-
 from framework import DatasetLoader
-from .dataset import SparseModularDataset
+from .dataset import SparseModularDataset, GPUBatchIterator
 
 
 class ModArithmeticLoader(DatasetLoader):
-    """Creates ordered DataLoaders for modular arithmetic data.
+    """Creates GPU-native batch iterators for modular arithmetic data.
 
     Handles stride, target, random, and fixed-random orderings.
+    Uses GPUBatchIterator to bypass DataLoader CPU overhead — all index
+    generation and batch gathering happens directly on GPU.
     """
 
     def __init__(self, strategy='stride', p=9973, batch_size=256, seed=42, stride=None):
@@ -21,10 +20,10 @@ class ModArithmeticLoader(DatasetLoader):
         self.stride = stride
 
     def load(self, raw_data, config, **kwargs):
-        """Return one or more DataLoaders based on strategy.
+        """Return one or more batch iterators based on strategy.
 
-        For 'alternating': returns a list [stride_loader, target_loader].
-        For all others: returns a single DataLoader.
+        For 'alternating': returns a list [stride_iter, target_iter].
+        For all others: returns a single-element list.
 
         The runner handles iteration over multiple loaders.
         """
@@ -32,20 +31,18 @@ class ModArithmeticLoader(DatasetLoader):
             ds_stride = SparseModularDataset(raw_data, mode='structured_stride', p=self.p, stride=self.stride)
             ds_target = SparseModularDataset(raw_data, mode='structured_target', p=self.p)
             return [
-                DataLoader(ds_stride, batch_size=self.batch_size, shuffle=False),
-                DataLoader(ds_target, batch_size=self.batch_size, shuffle=False),
+                GPUBatchIterator(ds_stride, batch_size=self.batch_size),
+                GPUBatchIterator(ds_target, batch_size=self.batch_size),
             ]
         elif self.strategy == 'target':
             ds = SparseModularDataset(raw_data, mode='structured_target', p=self.p)
-            return [DataLoader(ds, batch_size=self.batch_size, shuffle=False)]
+            return [GPUBatchIterator(ds, batch_size=self.batch_size)]
         elif self.strategy == 'stride':
             ds = SparseModularDataset(raw_data, mode='structured_stride', p=self.p, stride=self.stride)
-            return [DataLoader(ds, batch_size=self.batch_size, shuffle=False)]
+            return [GPUBatchIterator(ds, batch_size=self.batch_size)]
         elif self.strategy == 'fixed-random':
             ds = SparseModularDataset(raw_data, mode='random', p=self.p)
-            return [DataLoader(ds, batch_size=self.batch_size, shuffle=False)]
+            return [GPUBatchIterator(ds, batch_size=self.batch_size)]
         else:  # random
             ds = SparseModularDataset(raw_data, mode='random', p=self.p)
-            g = torch.Generator()
-            g.manual_seed(self.seed)
-            return [DataLoader(ds, batch_size=self.batch_size, shuffle=True, generator=g)]
+            return [GPUBatchIterator(ds, batch_size=self.batch_size, shuffle=True, seed=self.seed)]

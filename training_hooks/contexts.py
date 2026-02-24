@@ -420,13 +420,21 @@ class ModelDataContext:
         console.remove_progress_task(self._TASK_BATCHES)
         return finalize(accum, count, to_cpu=False)
 
-    def get_shuffled_loader(self) -> DataLoader:
-        """Create a DataLoader with randomly permuted training data.
+    def get_shuffled_loader(self):
+        """Create an iterator with randomly permuted training data.
+
+        Supports both DataLoader (via .dataset.data) and GPUBatchIterator
+        (via .data) as the underlying loader.
 
         Returns:
-            New DataLoader with the same data in a random order.
+            New iterator with the same data in a random order.
         """
-        raw_data = self._loader.dataset.data
+        if hasattr(self._loader, 'data'):
+            # GPUBatchIterator — data tensor stored directly
+            raw_data = self._loader.data
+        else:
+            # DataLoader — data tensor on the underlying dataset
+            raw_data = self._loader.dataset.data
         perm = torch.randperm(len(raw_data), device=raw_data.device)
         shuffled_data = raw_data[perm]
         shuffled_ds = TensorDataset(shuffled_data)

@@ -5,7 +5,6 @@ import math
 
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
 
 from framework import GrokkingRunner, ExperimentRegistry, SimpleTrainStep
 from framework import display
@@ -14,7 +13,7 @@ from .config import ModArithmeticConfig
 from .model import GrokkingTransformer
 from .generator import ModArithmeticGenerator
 from .loader import ModArithmeticLoader
-from .dataset import SparseModularDataset
+from .dataset import SparseModularDataset, GPUBatchIterator
 from .strategy import (
     StrideStrategy, TargetStrategy, RandomStrategy, FixedRandomStrategy,
 )
@@ -202,8 +201,8 @@ class ModArithmeticRunner(GrokkingRunner):
         test_ds = SparseModularDataset(
             test_raw, mode='random', p=self.config.p,
         )
-        self.test_loader = DataLoader(
-            test_ds, batch_size=self.config.batch_size * 8, shuffle=False,
+        self.test_loader = GPUBatchIterator(
+            test_ds, batch_size=self.config.batch_size * 8,
         )
 
         # Create train loader(s) — may be a list for alternating strategies
@@ -238,16 +237,15 @@ class ModArithmeticRunner(GrokkingRunner):
     def get_epoch_loader(self, data, epoch):
         """Select from list of loaders.
 
-        Re-seeds the DataLoader's shuffle generator (if any) with seed + epoch
+        Re-seeds the iterator's shuffle generator (if any) with seed + epoch
         so that shuffle order is deterministic from (seed, epoch) alone,
         enabling resume from any checkpoint without replaying prior epochs.
         """
         loader = data[epoch % len(data)]
 
-        # Per-epoch deterministic seeding for shuffled DataLoaders
-        sampler = getattr(loader, 'sampler', None)
-        if sampler is not None and getattr(sampler, 'generator', None) is not None:
-            sampler.generator.manual_seed(self.config.seed + epoch)
+        # Per-epoch deterministic seeding for shuffled iterators
+        if hasattr(loader, 'seed_epoch'):
+            loader.seed_epoch(self.config.seed + epoch)
 
         return loader
 

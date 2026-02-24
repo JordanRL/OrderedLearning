@@ -34,3 +34,39 @@ class SparseModularDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.data[idx]
+
+
+class GPUBatchIterator:
+    """GPU-native batch iterator that bypasses DataLoader CPU overhead.
+
+    PyTorch's DataLoader calls __getitem__ individually for each sample
+    (CPU-mediated), then collates via torch.stack. This class generates
+    indices and gathers batches directly on GPU with a single tensor
+    operation per batch.
+    """
+
+    def __init__(self, dataset, batch_size, shuffle=False, seed=None):
+        self.data = dataset.data
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self._epoch_seed = seed
+
+    def __len__(self):
+        return (len(self.data) + self.batch_size - 1) // self.batch_size
+
+    def seed_epoch(self, seed):
+        """Set the seed for the next iteration's shuffle."""
+        self._epoch_seed = seed
+
+    def __iter__(self):
+        n = len(self.data)
+        if self.shuffle:
+            g = torch.Generator(device=self.data.device)
+            if self._epoch_seed is not None:
+                g.manual_seed(self._epoch_seed)
+            indices = torch.randperm(n, device=self.data.device, generator=g)
+        else:
+            indices = torch.arange(n, device=self.data.device)
+
+        for start in range(0, n, self.batch_size):
+            yield self.data[indices[start:start + self.batch_size]]
