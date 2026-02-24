@@ -20,8 +20,6 @@ of 11 yields 10 data points.
 
 import copy
 
-import copy
-
 import torch
 
 from .base import MetricInfo, HookPoint, StepSchedule, InterventionHook, HookRegistry

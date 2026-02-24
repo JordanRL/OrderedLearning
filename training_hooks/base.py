@@ -243,13 +243,22 @@ class TrainingHook(ABC):
 
 
 class InterventionHook(TrainingHook):
-    """Base class for hooks that modify training state.
+    """Base class for hooks that need ModelDataContext at some lifecycle points.
 
     Intervention hooks receive a ModelDataContext SAPI that provides controlled
     operations like saving/restoring checkpoints and running extra training
     epochs. The HookManager handles state save/restore around interventions.
 
-    Subclasses must implement `intervene()` instead of `compute()`.
+    Subclasses must implement ``intervene()`` and may also override
+    ``compute()`` for HookPoints where they operate in observer mode.
+
+    Use ``intervention_points`` to declare which HookPoints need
+    ``intervene()`` with ModelDataContext.  At all other registered
+    HookPoints, ``compute()`` is called instead, giving the hook
+    read-only access via RunDataContext.  When ``intervention_points``
+    is None (the default), all ``hook_points`` are treated as
+    intervention points — matching the behavior before this attribute
+    existed.
     """
 
     # Whether this hook needs a pre-epoch checkpoint (model + optimizer state
@@ -259,13 +268,20 @@ class InterventionHook(TrainingHook):
     # and accessible via restore_pre_epoch().
     needs_pre_epoch_state: bool = False
 
+    # The HookPoints where this hook needs intervene() with ModelDataContext.
+    # At other hook_points, compute() is called instead (observer mode).
+    # None (default) means all hook_points are intervention points.
+    intervention_points: set[HookPoint] | None = None
+
     @abstractmethod
     def intervene(self, run_ctx: 'RunDataContext', model_ctx: 'ModelDataContext') -> dict[str, Any]:
         """Perform intervention using the training SAPI.
 
-        Called at SNAPSHOT points after all observer hooks have fired.
-        The HookManager ensures training state is properly saved before
-        and restored after this method returns.
+        Called at HookPoints listed in ``intervention_points`` (or all
+        ``hook_points`` when ``intervention_points`` is None), after all
+        observer-mode hooks have fired.  The HookManager ensures training
+        state is properly saved before and restored after this method
+        returns.
 
         Args:
             run_ctx: RunDataContext with read-only training state.
@@ -278,8 +294,12 @@ class InterventionHook(TrainingHook):
         ...
 
     def compute(self, ctx) -> dict[str, Any]:
-        # InterventionHooks use intervene() instead.
-        # HookManager dispatches to intervene() directly.
+        """Observer-mode computation for non-intervention HookPoints.
+
+        Called at HookPoints where this hook is registered but does not
+        need ``intervene()``.  Override in subclasses that want to produce
+        metrics at observer-mode points.  Default returns empty dict.
+        """
         return {}
 
 
@@ -453,14 +473,6 @@ class HookManager:
             for hp in points:
                 self._hooks_by_point[hp].append(hook)
 
-        # Separate observers from interventions for ordering
-        self._observers: list[TrainingHook] = [
-            h for h in self._hooks if not isinstance(h, InterventionHook)
-        ]
-        self._interventions: list[InterventionHook] = [
-            h for h in self._hooks if isinstance(h, InterventionHook)
-        ]
-
         # Buffer for step-level metrics (PRE_STEP / POST_STEP).
         # Accumulated per-step scalars are flushed as lists at epoch end.
         self._step_metrics_buffer: dict[str, list] = {}
@@ -529,21 +541,30 @@ class HookManager:
 
     def has_interventions(self) -> bool:
         """Whether any intervention hooks are registered."""
-        return len(self._interventions) > 0
+        return any(isinstance(h, InterventionHook) for h in self._hooks)
 
     def has_interventions_at(
         self, *hook_points: HookPoint, epoch: int | None = None,
     ) -> bool:
-        """Whether any intervention hooks are registered at the given hook point(s)."""
+        """Whether any hooks need ``intervene()`` at the given hook point(s).
+
+        Respects ``intervention_points``: an InterventionHook only counts
+        if the given hook_point is in its ``intervention_points`` (or
+        ``intervention_points`` is None, meaning all points).
+        """
         for hp in hook_points:
             for hook in self._hooks_by_point.get(hp, []):
-                if isinstance(hook, InterventionHook) and self._is_hook_active(hook, hp, epoch):
+                if (self._needs_intervene_at(hook, hp)
+                        and self._is_hook_active(hook, hp, epoch)):
                     return True
         return False
 
     def needs_pre_epoch_state(self) -> bool:
         """Whether any intervention hook needs a pre-epoch checkpoint."""
-        return any(h.needs_pre_epoch_state for h in self._interventions)
+        return any(
+            h.needs_pre_epoch_state
+            for h in self._hooks if isinstance(h, InterventionHook)
+        )
 
     def needs_pre_epoch_state_at(
         self, *hook_points: HookPoint, epoch: int | None = None,
@@ -553,6 +574,7 @@ class HookManager:
             for hook in self._hooks_by_point.get(hp, []):
                 if (isinstance(hook, InterventionHook)
                         and hook.needs_pre_epoch_state
+                        and self._needs_intervene_at(hook, hp)
                         and self._is_hook_active(hook, hp, epoch)):
                     return True
         return False
@@ -588,6 +610,20 @@ class HookManager:
             return True
         return hook.step_schedule.is_active(self._global_step)
 
+    def _needs_intervene_at(self, hook: TrainingHook, hook_point: HookPoint) -> bool:
+        """Whether *hook* should use ``intervene()`` at *hook_point*.
+
+        Returns True only for InterventionHook instances whose
+        ``intervention_points`` includes the given hook_point.  When
+        ``intervention_points`` is None (default), all hook_points are
+        treated as intervention points (backward compatible).
+        """
+        if not isinstance(hook, InterventionHook):
+            return False
+        if hook.intervention_points is None:
+            return True
+        return hook_point in hook.intervention_points
+
     def has_active_step_hooks(
         self, *hook_points: HookPoint, epoch: int | None = None,
     ) -> bool:
@@ -602,10 +638,10 @@ class HookManager:
     def has_active_step_interventions(
         self, *hook_points: HookPoint, epoch: int | None = None,
     ) -> bool:
-        """Whether any intervention hooks are active at the current global step."""
+        """Whether any hooks need ``intervene()`` at the current global step."""
         for hp in hook_points:
             for hook in self._hooks_by_point.get(hp, []):
-                if (isinstance(hook, InterventionHook)
+                if (self._needs_intervene_at(hook, hp)
                         and self._is_hook_active(hook, hp, epoch)
                         and self._is_step_active(hook)):
                     return True
@@ -701,10 +737,21 @@ class HookManager:
         if self._offload_state:
             self._restore_states(run_ctx)
 
-        # Fire observers first
-        for hook in hooks_at_point:
-            if isinstance(hook, InterventionHook):
-                continue
+        # Partition hooks into observer-mode and intervention-mode at this
+        # HookPoint.  InterventionHook instances whose intervention_points
+        # excludes this point are treated as observers (compute() is called).
+        observers_here = [
+            h for h in hooks_at_point
+            if not self._needs_intervene_at(h, hook_point)
+        ]
+        interventions_here = [
+            h for h in hooks_at_point
+            if self._needs_intervene_at(h, hook_point)
+        ]
+
+        # Fire observer-mode hooks (TrainingHook instances AND
+        # InterventionHook instances in observer mode at this point)
+        for hook in observers_here:
             if show_progress:
                 console.update_progress_task(
                     self._TASK_HOOKS,
@@ -718,17 +765,11 @@ class HookManager:
             if show_progress:
                 console.update_progress_task(self._TASK_HOOKS, advance=1)
 
-        # Fire interventions (when ModelDataContext is provided)
-        if model_ctx is not None:
-            has_interventions = any(
-                isinstance(h, InterventionHook) for h in hooks_at_point
-            )
-            if has_interventions:
-                guardian_token = model_ctx.save_checkpoint(full=True)
+        # Fire intervention-mode hooks (only when ModelDataContext is provided)
+        if model_ctx is not None and interventions_here:
+            guardian_token = model_ctx.save_checkpoint(full=True)
 
-            for hook in hooks_at_point:
-                if not isinstance(hook, InterventionHook):
-                    continue
+            for hook in interventions_here:
                 if show_progress:
                     console.update_progress_task(
                         self._TASK_HOOKS,
@@ -742,9 +783,8 @@ class HookManager:
                 if show_progress:
                     console.update_progress_task(self._TASK_HOOKS, advance=1)
 
-            if has_interventions:
-                model_ctx.restore_checkpoint(guardian_token)
-                model_ctx.discard_checkpoint(guardian_token)
+            model_ctx.restore_checkpoint(guardian_token)
+            model_ctx.discard_checkpoint(guardian_token)
 
         if show_progress:
             console.remove_progress_task(self._TASK_HOOKS)

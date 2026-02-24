@@ -57,9 +57,8 @@ def build_model_context_if_needed(hook_manager, hook_point, epoch, *,
     needs_it = False
     if hook_point in (HookPoint.PRE_STEP, HookPoint.POST_STEP):
         needs_it = hook_manager.has_active_step_interventions(hook_point, epoch=epoch)
-    elif hook_point in (HookPoint.POST_EPOCH, HookPoint.SNAPSHOT):
-        # POST_EPOCH and SNAPSHOT intervention hooks need model context
-        needs_it = hook_manager.has_hooks_at(hook_point, epoch=epoch)
+    elif hook_point in (HookPoint.PRE_EPOCH, HookPoint.POST_EPOCH, HookPoint.SNAPSHOT):
+        needs_it = hook_manager.has_interventions_at(hook_point, epoch=epoch)
 
     if not needs_it:
         return None

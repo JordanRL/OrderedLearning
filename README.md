@@ -50,17 +50,12 @@ python run_experiment.py mod_arithmetic --strategy target --with-hooks minimal -
 python run_experiment.py mod_arithmetic --strategy fixed-random --with-hooks minimal --seed 199 --save-checkpoints
 ```
 
-Then the final weights were made available for the solution comparison code:
+Reference weights for solution-dependent metrics are now resolved automatically
+from the output directory (e.g., `output/mod_arithmetic/stride/stride_final.pt`).
+No manual copying is needed — the second run finds the `_final.pt` files written
+by the first run.
 
-```bash
-mkdir weights
-cp output/mod_arithmetic/stride/stride_final.pt weights/stride_final.pt
-cp output/mod_arithmetic/random/random_final.pt weights/random_final.pt
-cp output/mod_arithmetic/target/target_final.pt weights/target_final.pt
-cp output/mod_arithmetic/fixed-random/fixed-random_final.pt weights/fixed-random_final.pt
-```
-
-Finally, the fully instrumented experiment was run on the same pod:
+Then the fully instrumented experiment was run on the same pod:
 
 ```bash
 python run_experiment.py mod_arithmetic --strategy stride --with-hooks full --seed 199 --hook-jsonl --validate-checkpoints

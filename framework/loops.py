@@ -266,7 +266,11 @@ def step_loop(runner, hook_manager, resume=None) -> dict:
 
         if hook_manager:
             hook_manager.reset_all()
-            hook_manager.set_run_context(strategy=strategy_name)
+            hook_manager.set_run_context(
+                strategy=strategy_name,
+                output_dir=config.output_dir,
+                experiment_name=config.experiment_name,
+            )
 
         runner.wire_hooks(strategy_name, strategy, hook_manager)
 
@@ -378,7 +382,14 @@ def step_loop(runner, hook_manager, resume=None) -> dict:
                             lr=scheduler.get_last_lr()[0], config=config,
                             profiler=profiler,
                         )
-                        hook_manager.fire(HookPoint.SNAPSHOT, run_ctx)
+                        model_ctx = build_model_context_if_needed(
+                            hook_manager, HookPoint.SNAPSHOT, epoch=0,
+                            model=model, optimizer=optimizer, scheduler=scheduler,
+                            criterion=criterion, loader=data, config=config,
+                            device=runner.device,
+                            profiler=profiler, loss_fn=loss_fn,
+                        )
+                        hook_manager.fire(HookPoint.SNAPSHOT, run_ctx, model_ctx)
 
                     if trajectory is not None:
                         trajectory.append({
@@ -504,7 +515,11 @@ def epoch_loop(runner, hook_manager, resume=None) -> dict:
 
         if hook_manager:
             hook_manager.reset_all()
-            hook_manager.set_run_context(strategy=strategy_name)
+            hook_manager.set_run_context(
+                strategy=strategy_name,
+                output_dir=config.output_dir,
+                experiment_name=config.experiment_name,
+            )
 
         runner.wire_hooks(strategy_name, strategy, hook_manager)
 
@@ -576,7 +591,15 @@ def epoch_loop(runner, hook_manager, resume=None) -> dict:
                         epoch=epoch, model=model, loader=loader, config=config,
                         profiler=profiler,
                     )
-                    hook_manager.fire(HookPoint.PRE_EPOCH, run_ctx)
+                    model_ctx = build_model_context_if_needed(
+                        hook_manager, HookPoint.PRE_EPOCH, epoch,
+                        model=model, optimizer=optimizer, scheduler=scheduler,
+                        criterion=criterion, loader=loader, config=config,
+                        device=runner.device,
+                        pre_epoch_state=pre_epoch_state,
+                        profiler=profiler, loss_fn=loss_fn,
+                    )
+                    hook_manager.fire(HookPoint.PRE_EPOCH, run_ctx, model_ctx)
 
                 # ── BATCH LOOP ──
                 display.batch_progress_start(len(loader))

@@ -5,7 +5,7 @@ import warnings
 import torch
 
 
-DEFAULT_REFERENCE_PATH = "weights/{strategy}_final.pt"
+DEFAULT_REFERENCE_PATH = "{output_dir}/{experiment_name}/{strategy}/{strategy}_final.pt"
 
 
 class _SafeFormatDict(dict):
