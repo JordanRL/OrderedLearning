@@ -12,7 +12,7 @@
 set -e
 
 TARGET_DIR="${WORKSPACE_DIR:-/workspace/OrderedLearning}"
-REPO="${REPO_URL:-github.com/your-user/OrderedLearning.git}"
+REPO="${REPO_URL:-github.com/JordanRL/OrderedLearning.git}"
 BRANCH="${REPO_BRANCH:-master}"
 
 echo "--- Container Startup Script ---"
