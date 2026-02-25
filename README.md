@@ -50,7 +50,7 @@ python run_experiment.py mod_arithmetic --strategy target --with-hooks minimal -
 python run_experiment.py mod_arithmetic --strategy fixed-random --with-hooks minimal --seed 199 --save-checkpoints
 ```
 
-Reference weights for solution-dependent metrics are now resolved automatically from the output directory (e.g., `output/mod_arithmetic/stride/stride_final.pt`). No manual copying is needed — the second run finds the `_final.pt` files written by the first run.
+Reference weights for solution-dependent metrics are resolved automatically from the output directory (e.g., `output/mod_arithmetic/stride/stride_final.pt`).
 
 Then the fully instrumented experiment was run on the same pod:
 
