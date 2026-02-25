@@ -20,7 +20,7 @@ git clone https://github.com/JordanRL/OrderedLearning.git
 cd OrderedLearning
 
 # To reproduce paper results, use the exact code version:
-git checkout paper-data-v1
+git checkout paper-data-v3
 
 # For general use (allows compatible newer versions):
 pip install -r requirements.txt
@@ -50,10 +50,7 @@ python run_experiment.py mod_arithmetic --strategy target --with-hooks minimal -
 python run_experiment.py mod_arithmetic --strategy fixed-random --with-hooks minimal --seed 199 --save-checkpoints
 ```
 
-Reference weights for solution-dependent metrics are now resolved automatically
-from the output directory (e.g., `output/mod_arithmetic/stride/stride_final.pt`).
-No manual copying is needed — the second run finds the `_final.pt` files written
-by the first run.
+Reference weights for solution-dependent metrics are now resolved automatically from the output directory (e.g., `output/mod_arithmetic/stride/stride_final.pt`). No manual copying is needed — the second run finds the `_final.pt` files written by the first run.
 
 Then the fully instrumented experiment was run on the same pod:
 
