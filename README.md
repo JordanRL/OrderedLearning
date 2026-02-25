@@ -61,8 +61,6 @@ python run_experiment.py mod_arithmetic --strategy target --with-hooks full --se
 python run_experiment.py mod_arithmetic --strategy fixed-random --with-hooks full --seed 199 --hook-jsonl --validate-checkpoints
 ```
 
-The `analysis_tools/replay_to_wandb.py` script was then used to get the collected metrics from the JSONL logs and upload them to W&B.
-
 **NOTE:** The data the paper discusses was gathered on seed 199, however it is not the only seed that produced comparable results. The experiment was also run without full instrumentation on seeds 31, 42, 242, and 9973, all of which generalized to 99.5% test accuracy within 700 epochs. One seed tested, 555, did not generalize, stalling at approximately 24% test accuracy. Convergence times ranged from 465 epochs (seed 42) to 696 epochs (seed 9973). Five of six seeds tested generalize at the 0.3% data fraction.
 
 ### Key configuration flags
