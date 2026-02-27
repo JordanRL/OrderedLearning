@@ -8,17 +8,17 @@ Supports multiple metrics with framework-level --layout and --group-by.
 
 Usage:
     python analyze_experiment.py mod_arithmetic convergence \
-        --metrics training_metrics/val_acc --threshold 95.0
+        --metrics training_metrics/validation_accuracy --threshold 95.0
 
     python analyze_experiment.py mod_arithmetic convergence \
         --metrics training_metrics/loss --threshold 3.0 --direction below
 
     python analyze_experiment.py mod_arithmetic convergence \
-        --metrics training_metrics/val_acc training_metrics/loss \
+        --metrics training_metrics/validation_accuracy training_metrics/loss \
         --layout grid --group-by strategy
 
     python analyze_experiment.py mod_arithmetic convergence \
-        --metrics training_metrics/val_acc --normalize
+        --metrics training_metrics/validation_accuracy --normalize
 """
 
 from __future__ import annotations

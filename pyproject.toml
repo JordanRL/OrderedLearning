@@ -1,0 +1,13 @@
+[tool.pytest.ini_options]
+testpaths = ["tests", "experiments"]
+pythonpath = ["."]
+markers = [
+    "gpu: marks tests that require a CUDA GPU (deselect with '-m \"not gpu\"')",
+]
+
+[tool.coverage.run]
+source = ["framework", "training_hooks"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

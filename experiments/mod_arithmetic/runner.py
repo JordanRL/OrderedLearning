@@ -54,8 +54,8 @@ class ModArithmeticRunner(GrokkingRunner):
     live_metrics = {
         'Basic': {
             'Loss': 'training_metrics/loss',
-            'Train Accuracy': 'training_metrics/train_acc',
-            'Test Accuracy': 'training_metrics/val_acc',
+            'Train Accuracy': 'training_metrics/training_accuracy',
+            'Test Accuracy': 'training_metrics/validation_accuracy',
             'Loss Volatility': 'training_diagnostics/loss_volatility',
             'Loss Autocorr': 'training_diagnostics/loss_autocorrelation',
             'Grad Norm CV': 'training_diagnostics/grad_norm_cv',

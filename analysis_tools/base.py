@@ -14,6 +14,8 @@ from typing import Any
 
 import pandas as pd
 
+from framework.registry import Registry
+
 
 def _metric_slug(name: str) -> str:
     """Convert a metric column name to a filename-safe token.
@@ -137,42 +139,21 @@ class AnalysisTool(ABC):
         return []
 
 
-class ToolRegistry:
+class ToolRegistry(Registry):
     """Registry of available analysis tools.
 
     Tools register via the @ToolRegistry.register decorator. The registry
     stores classes (not instances) and instantiates them on demand.
     """
 
-    _tools: dict[str, type[AnalysisTool]] = {}
-
-    @classmethod
-    def register(cls, tool_cls: type[AnalysisTool]) -> type[AnalysisTool]:
-        """Decorator to register a tool class."""
-        instance = tool_cls()
-        cls._tools[instance.name] = tool_cls
-        return tool_cls
-
-    @classmethod
-    def get(cls, name: str) -> type[AnalysisTool]:
-        """Get a tool class by name."""
-        if name not in cls._tools:
-            available = ', '.join(sorted(cls._tools.keys()))
-            raise ValueError(
-                f"Unknown analysis tool: '{name}'. Available tools: {available}"
-            )
-        return cls._tools[name]
-
-    @classmethod
-    def list_all(cls) -> list[str]:
-        """List all registered tool names."""
-        return sorted(cls._tools.keys())
+    _items = {}
+    _registry_label = "analysis tool"
 
     @classmethod
     def get_all_info(cls) -> list[dict]:
         """Get metadata for all registered tools."""
         info = []
-        for name, tool_cls in cls._tools.items():
+        for name, tool_cls in cls._items.items():
             instance = tool_cls()
             info.append({
                 'name': instance.name,

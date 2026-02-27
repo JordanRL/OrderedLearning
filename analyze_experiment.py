@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 from console import OLConsole, ConsoleConfig, ConsoleMode
-from framework.cli_parser import OLArgumentParser
+from framework.cli import OLArgumentParser
 from analysis_tools import ToolRegistry, AnalysisContext
 from analysis_tools.data_loader import load_experiment_data, load_experiment_config
 from analysis_tools.metadata import MetricResolver

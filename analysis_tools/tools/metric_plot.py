@@ -5,7 +5,7 @@ layout (overlay or grid) and grouping.
 
 Usage:
     python analyze_experiment.py mod_arithmetic metric_plot \
-        --metrics training_metrics/loss training_metrics/val_acc \
+        --metrics training_metrics/loss training_metrics/validation_accuracy \
         --layout overlay --smooth 0.9
 """
 

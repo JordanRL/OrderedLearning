@@ -366,7 +366,7 @@ def generate_runner_smart(name: str, base_class: str, strategies: list[str],
     lines.append('from framework import display')
 
     if base_class == 'LMRunner' and eval_target_mode == 'default':
-        lines.append('from framework.eval_targets import DEFAULT_TARGETS')
+        lines.append('from framework.eval import DEFAULT_TARGETS')
 
     lines.append('')
     lines.append(f'from .config import {config_class}, ALL_STRATEGIES')

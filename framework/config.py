@@ -25,6 +25,11 @@ class BaseConfig:
     record_trajectory: bool = False
     profile_hooks: bool = False
 
+    # Gradient management
+    max_grad_norm: float | None = None
+    accumulation_steps: int = 1
+    use_amp: bool = False
+
     # Compilation / runtime
     with_compile: bool = False
     no_determinism: bool = False

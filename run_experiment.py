@@ -32,12 +32,13 @@ import sys
 import torch
 
 from console import OLConsole, ConsoleConfig, ConsoleMode
-from framework import ExperimentRegistry, step_loop, epoch_loop
+from framework import ExperimentRegistry
+from framework.trainers import StepTrainer, EpochTrainer
 from framework.cli import (
     add_common_args, add_hook_args,
     handle_hook_inspection, build_hook_manager,
+    OLArgumentParser,
 )
-from framework.cli_parser import OLArgumentParser
 
 
 def list_experiments():
@@ -92,7 +93,7 @@ def _handle_config_mode(config_path, remaining_argv):
     Returns (experiment_name, runner_cls, config, args).
     """
     from pathlib import Path
-    from framework.resume import load_config_from_output
+    from framework.checkpoints import load_config_from_output
 
     config_file = Path(config_path)
     if not config_file.exists():
@@ -208,7 +209,7 @@ def main():
         # Init console in NORMAL mode for prompts
         OLConsole(ConsoleConfig(mode=ConsoleMode.NORMAL, show_time=False))
 
-        from framework.interactive import interactive_configure
+        from framework.cli import interactive_configure
         experiment_name, args = interactive_configure(live_override)
 
         runner_cls = ExperimentRegistry.get(experiment_name)
@@ -280,7 +281,7 @@ def main():
         # Config already built by _handle_config_mode above
         pass
     elif getattr(args, 'resume', False):
-        from framework.resume import (
+        from framework.checkpoints import (
             check_resume_conflicts, detect_resume_state, load_config_from_output,
         )
 
@@ -350,11 +351,17 @@ def main():
     runner = runner_cls.build_runner(config, args)
 
     try:
-        # Dispatch to the correct loop based on runner.loop_type
-        if runner.loop_type == 'epoch':
-            results = epoch_loop(runner, hook_manager, resume=resume_info)
+        # Dispatch to the correct trainer based on runner.trainer_class or loop_type
+        if runner.trainer_class is not None:
+            trainer_cls = runner.trainer_class
+        elif runner.loop_type == 'epoch':
+            trainer_cls = EpochTrainer
         else:
-            results = step_loop(runner, hook_manager, resume=resume_info)
+            trainer_cls = StepTrainer
+        trainer = trainer_cls(runner, hook_manager, resume=resume_info)
+        if hook_manager:
+            hook_manager.set_capabilities(trainer.get_capabilities())
+        results = trainer.train()
     finally:
         if live_mode:
             console.end_live()
