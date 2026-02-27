@@ -7,12 +7,12 @@ Supports multiple y-metrics with framework-level --layout and --group-by.
 
 Usage:
     python analyze_experiment.py mod_arithmetic correlation \
-        --x training_metrics/loss --y training_metrics/val_acc \
+        --x training_metrics/loss --y training_metrics/validation_accuracy \
         --trend-line
 
     python analyze_experiment.py mod_arithmetic correlation \
         --x training_metrics/loss \
-        --y training_metrics/val_acc training_diagnostics/loss_volatility \
+        --y training_metrics/validation_accuracy training_diagnostics/loss_volatility \
         --layout grid --group-by strategy
 """
 

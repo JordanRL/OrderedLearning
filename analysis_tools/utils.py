@@ -316,23 +316,3 @@ def load_final_params(snapshot_dir: str) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"final_params.pt not found in {snapshot_dir}")
     return torch.load(path, map_location='cpu')
-
-
-def flatten_grads(grads: Dict[str, torch.Tensor], exclude_bias: bool = True) -> torch.Tensor:
-    """Flatten gradient dictionary to single vector."""
-    grad_list = []
-    for name, grad in sorted(grads.items()):  # Sort for consistency
-        if exclude_bias and 'bias' in name:
-            continue
-        grad_list.append(grad.view(-1).float())
-    return torch.cat(grad_list)
-
-
-def flatten_params(params: Dict[str, torch.Tensor], exclude_bias: bool = True) -> torch.Tensor:
-    """Flatten parameter dictionary to single vector."""
-    param_list = []
-    for name, param in sorted(params.items()):
-        if exclude_bias and 'bias' in name:
-            continue
-        param_list.append(param.view(-1).float())
-    return torch.cat(param_list)

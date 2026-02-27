@@ -7,7 +7,7 @@ formulas, and sign conventions from MetricInfo.
 
 from __future__ import annotations
 
-from training_hooks.base import MetricInfo
+from framework.hooks import MetricInfo
 
 
 class MetricResolver:
@@ -37,7 +37,7 @@ class MetricResolver:
             return
         self._built = True
 
-        from training_hooks.base import HookRegistry
+        from framework.hooks import HookRegistry
 
         for name in HookRegistry.list_all():
             hook_cls = HookRegistry.get(name)

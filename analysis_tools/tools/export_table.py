@@ -5,7 +5,7 @@ with configurable precision and optional bolding of best values.
 
 Usage:
     python analyze_experiment.py mod_arithmetic export_table \
-        --metrics training_metrics/loss training_metrics/val_acc \
+        --metrics training_metrics/loss training_metrics/validation_accuracy \
         --stat final --table-format latex --bold-best
 """
 

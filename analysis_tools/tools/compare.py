@@ -5,7 +5,7 @@ across strategies, with a Rich summary table.
 
 Usage:
     python analyze_experiment.py mod_arithmetic compare \
-        --metrics training_metrics/loss training_metrics/val_acc \
+        --metrics training_metrics/loss training_metrics/validation_accuracy \
         --stat final
 """
 

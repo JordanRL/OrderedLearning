@@ -1,12 +1,15 @@
 """Experiment runner hierarchy.
 
 ExperimentRunner is the ABC. It declares loop_type and provides lifecycle
-methods that the loop functions (step_loop, epoch_loop) call. Experiments
-never write the training loop — they implement building blocks.
+methods that the Trainer classes call. Experiments never write the
+training loop — they implement building blocks.
 
 Task-specific base classes:
 - LMRunner: GPT-2 language model experiments (step-based)
 - GrokkingRunner: synthetic grokking experiments (epoch-based)
+
+These base classes implement build_components() using internal create_*
+methods that subclasses can override for customization.
 """
 
 from __future__ import annotations
@@ -22,27 +25,34 @@ import torch.nn as nn
 import torch.optim as optim
 
 from console import OLConsole
+from .capabilities import ModelCapability
 from .config import BaseConfig
-from .eval_result import EvalResult
-from .strategy_runner import StrategyRunner, StepResult
+from .eval import EvalResult
+from .strategies import StrategyRunner, StepResult
 from .utils import (
     set_seeds, set_determinism, snapshot_params,
     get_environment_info, check_environment_compatibility,
 )
 from .models import MODEL_CONFIGS, get_lr_scheduler
-from .cli import add_eval_target_args
+from .cli.cli import add_eval_target_args
 from . import display
 
 
 class ExperimentRunner(ABC):
     """Base class for all experiments.
 
-    Never writes the training loop. Declares loop_type to select which
-    loop function runs it. Provides lifecycle methods that the loop calls.
+    Experiments define two required methods:
+    - get_strategies(): what experimental conditions to compare
+    - build_components(): compose and return the training components bundle
+
+    Everything else (evaluation, display, saving, etc.) has sensible
+    defaults that can be overridden.
     """
 
     config_class = BaseConfig
     loop_type: str = 'step'   # 'step' or 'epoch' — framework dispatches
+    trainer_class: type | None = None  # override to use a custom Trainer subclass
+    model_capabilities: ModelCapability = ModelCapability.PARAMETERS | ModelCapability.GLOBAL_LOSS
     hook_sets: dict[str, list[str]] = {
         'none': [],
         'minimal': [],
@@ -52,6 +62,7 @@ class ExperimentRunner(ABC):
     }
     live_metrics: dict[str, dict[str, str]] = {}  # group -> {label: metric_key}
     arg_aliases: dict[str, str] = {}  # config field name -> argparse dest name
+    progress_metric: str | None = None  # metric key to highlight in epoch progress bar
 
     def __init__(self, config: BaseConfig, **kwargs):
         self.config = config
@@ -93,47 +104,30 @@ class ExperimentRunner(ABC):
         """Return list of strategy names to iterate over."""
         ...
 
-    # === Component creation ===
+    # === Component composition ===
 
     @abstractmethod
-    def create_model(self) -> nn.Module:
-        """Create and return a model on self.device."""
-        ...
+    def build_components(self, strategy_name: str, total: int):
+        """Compose and return the TrainingComponents bundle for a strategy.
 
-    @abstractmethod
-    def create_strategy(self, strategy_name: str) -> StrategyRunner:
-        """Create the StrategyRunner for this strategy name."""
-        ...
+        This is the primary composition point. Task-specific base classes
+        (GrokkingRunner, LMRunner) provide default implementations that call
+        internal create_* methods. Experiments override those methods for
+        customization, or override build_components() directly for full control.
 
-    @abstractmethod
-    def create_data(self, strategy_name: str) -> Any:
-        """Create the data source for this strategy."""
-        ...
+        Args:
+            strategy_name: Name of the current strategy.
+            total: Total steps or epochs for this run.
 
-    def create_optimizer(self, model: nn.Module) -> optim.Optimizer:
-        """Create optimizer. Override for custom setup."""
-        return optim.AdamW(
-            model.parameters(),
-            lr=getattr(self.config, 'lr', 1e-4),
-            weight_decay=getattr(self.config, 'weight_decay', 0.01),
-        )
-
-    def create_scheduler(self, optimizer: optim.Optimizer, total_steps: int):
-        """Create LR scheduler. Override for custom setup."""
-        warmup = getattr(self.config, 'warmup_steps', 0)
-        return get_lr_scheduler(optimizer, warmup, total_steps)
-
-    def create_criterion(self) -> nn.Module | None:
-        """Create loss function. Override for epoch-based experiments."""
-        return None
-
-    def get_loss_fn(self, criterion) -> callable | None:
-        """Return a loss function: (model, batch) -> loss_scalar.
-
-        Used by ModelDataContext for intervention hooks that need to compute
-        gradients on arbitrary batch formats. Returns None to use legacy
-        hardcoded behavior (mod-arithmetic [a, b, result] format).
+        Returns:
+            A TrainingComponents subclass (e.g., BackpropComponents).
         """
+        ...
+
+    def _create_grad_scaler(self):
+        """Create a GradScaler if AMP is enabled, else None."""
+        if getattr(self.config, 'use_amp', False):
+            return torch.amp.GradScaler(device=str(self.device))
         return None
 
     # === Configuration ===
@@ -167,29 +161,18 @@ class ExperimentRunner(ABC):
         pass
 
     def save_training_state(self) -> dict | None:
-        """Return experiment-specific state to include in checkpoints.
-
-        Called by the training loop before saving a checkpoint. Override to
-        save custom state (e.g., curriculum phase, data iterator position,
-        strategy-specific counters) that the framework doesn't know about.
-
-        Returns a dict of serializable state, or None if nothing to save.
-        """
+        """Return experiment-specific state to include in checkpoints."""
         return None
 
     def load_training_state(self, state: dict) -> None:
-        """Restore experiment-specific state from a checkpoint.
-
-        Called by the training loop on resume. Receives the dict that was
-        returned by save_training_state() when the checkpoint was created.
-        """
+        """Restore experiment-specific state from a checkpoint."""
         pass
 
     def get_epoch_loader(self, data: Any, epoch: int):
         """Return the DataLoader for this epoch. Override for alternating loaders."""
         return data
 
-    def get_strategy_kwargs(self, strategy_name: str, model, optimizer, data) -> dict:
+    def get_strategy_kwargs(self, strategy_name: str, components) -> dict:
         """Return extra kwargs for strategy.setup().
 
         Override to provide tokenizer, criterion, selector, curriculum, etc.
@@ -199,25 +182,15 @@ class ExperimentRunner(ABC):
     # === Evaluation ===
 
     def test_validate(self, model: nn.Module, step_or_epoch: int) -> EvalResult | None:
-        """Basic validation measure (test accuracy, test loss, target probabilities).
-
-        Override in subclasses to provide test-set evaluation.
-        """
+        """Basic validation measure (test accuracy, test loss, target probabilities)."""
         return None
 
     def train_validate(self, model: nn.Module, step_or_epoch: int) -> EvalResult | None:
-        """Training process validation (train accuracy, phase metrics).
-
-        Override in subclasses to provide training-side evaluation.
-        """
+        """Training process validation (train accuracy, phase metrics)."""
         return None
 
     def evaluate(self, model: nn.Module, step_or_epoch: int) -> EvalResult | None:
-        """Evaluate model. Called at eval_every intervals and at start/end.
-
-        Composes test_validate() and train_validate(). Subclasses should
-        override those methods rather than this one.
-        """
+        """Evaluate model. Composes test_validate() and train_validate()."""
         test = self.test_validate(model, step_or_epoch)
         train = self.train_validate(model, step_or_epoch)
         return EvalResult.merge(test, train)
@@ -384,23 +357,18 @@ class ExperimentRunner(ABC):
         return experiment_dir
 
     def _check_environment_compatibility(self, config_path: str):
-        """Check current environment against a saved experiment_config.json.
-
-        If the saved config contains an 'environment' block and the current
-        environment differs in reproducibility-relevant ways, prints an error
-        with details and exits before any data is written to disk.
-        """
+        """Check current environment against a saved experiment_config.json."""
         import sys
 
         try:
             with open(config_path, 'r') as f:
                 saved_config = json.load(f)
         except (json.JSONDecodeError, OSError):
-            return  # Can't read config — skip check
+            return
 
         saved_env = saved_config.get('environment')
         if not saved_env:
-            return  # No environment block — skip check
+            return
 
         warnings = check_environment_compatibility(saved_env)
         if not warnings:
@@ -455,11 +423,7 @@ class ExperimentRunner(ABC):
         return None
 
     def save_final_model(self, experiment_dir: str, model: nn.Module, strategy_name: str):
-        """Save final model weights.
-
-        Embeds environment metadata alongside the state_dict so that
-        ReferenceWeights can check compatibility on load.
-        """
+        """Save final model weights."""
         model_path = os.path.join(experiment_dir, f'{strategy_name}_final.pt')
         torch.save({
             'model_state_dict': model.state_dict(),
@@ -473,11 +437,12 @@ class LMRunner(ExperimentRunner):
     """Base for language model experiments using GPT-2 architecture.
 
     Provides model creation, tokenizer setup, LM probability evaluation,
-    and standardized display for LM metrics. Researchers only need to
-    implement get_strategies(), create_data(), and create_strategy().
+    and standardized display for LM metrics. Researchers implement
+    get_strategies(), create_data(), and create_strategy().
     """
 
     loop_type = 'step'
+    model_capabilities = ModelCapability.PARAMETERS | ModelCapability.GLOBAL_LOSS | ModelCapability.ATTENTION
 
     def __init__(self, config, **kwargs):
         super().__init__(config, **kwargs)
@@ -498,7 +463,7 @@ class LMRunner(ExperimentRunner):
         """Create LM runner, passing eval_targets only when CLI overrides are present."""
         kwargs = {}
         if getattr(args, 'trigger', None) or getattr(args, 'targets_file', None):
-            from framework.eval_targets import build_eval_targets
+            from framework.eval import build_eval_targets
             kwargs['eval_targets'] = build_eval_targets(
                 targets_file=getattr(args, 'targets_file', None),
                 trigger=getattr(args, 'trigger', None),
@@ -506,14 +471,31 @@ class LMRunner(ExperimentRunner):
             )
         return cls(config=config, **kwargs)
 
-    # --- Provided by LMRunner ---
+    # === Component composition ===
 
-    def init_tokenizer(self):
-        """Initialize GPT-2 tokenizer if not already provided."""
-        if self.tokenizer is None:
-            from transformers import GPT2Tokenizer
-            self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+    def build_components(self, strategy_name, total):
+        """Build BackpropComponents using LM-specific create_* methods."""
+        from .trainers.components import BackpropComponents
+
+        config = self.config
+        model = self.create_model()
+        data = self.create_data(strategy_name)
+        strategy = self.create_strategy(strategy_name)
+        optimizer = self.create_optimizer(model)
+        scheduler = self.create_scheduler(optimizer, total)
+        criterion = self.create_criterion()
+        loss_fn = self.get_loss_fn(criterion)
+        grad_scaler = self._create_grad_scaler()
+
+        return BackpropComponents(
+            model=model, optimizer=optimizer, scheduler=scheduler,
+            criterion=criterion, loss_fn=loss_fn,
+            strategy=strategy, data=data,
+            max_grad_norm=config.max_grad_norm,
+            grad_scaler=grad_scaler,
+        )
+
+    # === Internal create_* methods (override in subclasses) ===
 
     def create_model(self) -> nn.Module:
         """Create GPT-2 model from config.model_size."""
@@ -526,6 +508,16 @@ class LMRunner(ExperimentRunner):
         self.console.print(f"[label]Model parameters:[/label] [value.count]{param_count:,}[/value.count]")
         return model
 
+    @abstractmethod
+    def create_data(self, strategy_name: str) -> Any:
+        """Create the data source for this strategy."""
+        ...
+
+    @abstractmethod
+    def create_strategy(self, strategy_name: str) -> StrategyRunner:
+        """Create the StrategyRunner for this strategy name."""
+        ...
+
     def create_optimizer(self, model: nn.Module) -> optim.Optimizer:
         return optim.AdamW(
             model.parameters(),
@@ -536,6 +528,9 @@ class LMRunner(ExperimentRunner):
     def create_scheduler(self, optimizer, total_steps):
         return get_lr_scheduler(optimizer, self.config.warmup_steps, total_steps)
 
+    def create_criterion(self) -> nn.Module | None:
+        return None
+
     def get_loss_fn(self, criterion):
         """Return GPT-2 LM loss function."""
         def lm_loss(model, batch):
@@ -543,22 +538,33 @@ class LMRunner(ExperimentRunner):
             return outputs.loss
         return lm_loss
 
+    # --- Tokenizer ---
+
+    def init_tokenizer(self):
+        """Initialize GPT-2 tokenizer if not already provided."""
+        if self.tokenizer is None:
+            from transformers import GPT2Tokenizer
+            self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
     def setup_condition(self, strategy_name: str):
         super().setup_condition(strategy_name)
         self.init_tokenizer()
         if self.eval_targets:
-            from framework.eval_targets import prepare_eval_targets
+            from framework.eval import prepare_eval_targets
             self.prepared_targets = prepare_eval_targets(
                 self.eval_targets, self.tokenizer, self.device
             )
         self.random_baseline_prob = 1.0 / self.model_config['vocab_size']
+
+    # --- Evaluation ---
 
     def test_validate(self, model: nn.Module, step_or_epoch: int) -> EvalResult | None:
         """Evaluate all targets and return EvalResult with probability metrics."""
         if not self.prepared_targets:
             return None
 
-        from framework.eval_targets import evaluate_all_targets
+        from framework.eval import evaluate_all_targets
         results = evaluate_all_targets(model, self.tokenizer, self.prepared_targets)
         primary_label = self.eval_targets[0].label
         primary = results[primary_label]
@@ -566,15 +572,17 @@ class LMRunner(ExperimentRunner):
         return EvalResult(
             metrics={
                 'loss': primary['loss'],
-                'seq_prob': primary['seq_prob'],
-                'avg_target_prob': primary['avg_target_prob'],
+                'sequence_probability': primary['sequence_probability'],
+                'average_target_probability': primary['average_target_probability'],
             },
             display_data={
                 'all_targets': results,
-                'gen_text': primary.get('gen_text', ''),
+                'generated_text': primary.get('generated_text', ''),
                 'top_token_info': primary.get('top_token_info', []),
             },
         )
+
+    # --- Display ---
 
     def display_eval(self, step_or_epoch, eval_result, strategy_name):
         """Display LM eval using framework display utilities."""
@@ -598,16 +606,91 @@ class GrokkingRunner(ExperimentRunner):
     Provides accuracy evaluation, grokking detection, and standardized
     display for classification metrics. Epoch-based with CosineAnnealing
     scheduler.
+
+    Subclasses implement create_model(), create_data(), and create_strategy().
     """
 
     loop_type = 'epoch'
+    model_capabilities = (ModelCapability.PARAMETERS | ModelCapability.GLOBAL_LOSS
+                          | ModelCapability.EMBEDDINGS | ModelCapability.ATTENTION)
+    progress_metric = 'validation_accuracy'
 
     def __init__(self, config, **kwargs):
         super().__init__(config, **kwargs)
         self.test_loader = None              # set during create_data or setup_condition
-        self._current_train_loader = None    # set by epoch_loop each epoch
+        self._current_train_loader = None    # set by EpochTrainer each epoch
 
-    # --- Provided by GrokkingRunner ---
+    # === Component composition ===
+
+    def build_components(self, strategy_name, total):
+        """Build BackpropComponents using grokking-specific create_* methods."""
+        from .trainers.components import BackpropComponents
+
+        config = self.config
+        model = self.create_model()
+        data = self.create_data(strategy_name)
+        strategy = self.create_strategy(strategy_name)
+        optimizer = self.create_optimizer(model)
+        criterion = self.create_criterion()
+        scheduler = self.create_scheduler(optimizer, total)
+        loss_fn = self.get_loss_fn(criterion)
+        grad_scaler = self._create_grad_scaler()
+
+        return BackpropComponents(
+            model=model, optimizer=optimizer, scheduler=scheduler,
+            criterion=criterion, loss_fn=loss_fn,
+            strategy=strategy, data=data,
+            get_shuffled_loader_fn=self._get_shuffled_loader,
+            max_grad_norm=config.max_grad_norm,
+            grad_scaler=grad_scaler,
+        )
+
+    @staticmethod
+    def _get_shuffled_loader(loader, config):
+        """Create a shuffled copy of the training data loader.
+
+        Handles both DataLoader (via .dataset.data) and GPUBatchIterator
+        (via .data) as the underlying loader.
+        """
+        from torch.utils.data import DataLoader as TorchDataLoader, TensorDataset
+
+        if hasattr(loader, 'data'):
+            raw_data = loader.data
+        else:
+            raw_data = loader.dataset.data
+        perm = torch.randperm(len(raw_data), device=raw_data.device)
+        shuffled_data = raw_data[perm]
+        shuffled_ds = TensorDataset(shuffled_data)
+        return TorchDataLoader(
+            shuffled_ds,
+            batch_size=config.batch_size,
+            shuffle=False,
+        )
+
+    # === Internal create_* methods (override in subclasses) ===
+
+    @abstractmethod
+    def create_model(self) -> nn.Module:
+        """Create and return a model on self.device."""
+        ...
+
+    @abstractmethod
+    def create_data(self, strategy_name: str) -> Any:
+        """Create the data source for this strategy."""
+        ...
+
+    @abstractmethod
+    def create_strategy(self, strategy_name: str) -> StrategyRunner:
+        """Create the StrategyRunner for this strategy name."""
+        ...
+
+    def create_optimizer(self, model: nn.Module) -> optim.Optimizer:
+        """Create optimizer. Default: AdamW."""
+        return optim.AdamW(
+            model.parameters(),
+            lr=getattr(self.config, 'lr', 1e-4),
+            weight_decay=getattr(self.config, 'weight_decay', 0.01),
+        )
 
     def create_criterion(self) -> nn.Module:
         return nn.CrossEntropyLoss()
@@ -618,6 +701,17 @@ class GrokkingRunner(ExperimentRunner):
             eta_min=getattr(self.config, 'min_lr', 1e-6),
         )
 
+    def get_loss_fn(self, criterion):
+        """Return classification loss function for mod-arithmetic-style data."""
+        def classification_loss(model, batch):
+            inputs = batch[:, :2]
+            targets = batch[:, 2]
+            outputs = model(inputs)
+            return criterion(outputs, targets)
+        return classification_loss
+
+    # --- Evaluation ---
+
     def test_validate(self, model: nn.Module, step_or_epoch: int) -> EvalResult | None:
         """Compute validation accuracy."""
         if self.test_loader is None:
@@ -625,7 +719,7 @@ class GrokkingRunner(ExperimentRunner):
         val_acc = self._compute_accuracy(model, self.test_loader, label="Test")
         target_acc = getattr(self.config, 'target_acc', 99.0)
         return EvalResult(
-            metrics={'val_acc': val_acc},
+            metrics={'validation_accuracy': val_acc},
             should_stop=(val_acc >= target_acc),
         )
 
@@ -635,7 +729,7 @@ class GrokkingRunner(ExperimentRunner):
             return None
         train_acc = self._compute_accuracy(model, self._current_train_loader, label="Train")
         return EvalResult(
-            metrics={'train_acc': train_acc},
+            metrics={'training_accuracy': train_acc},
         )
 
     def _compute_accuracy(self, model, loader, label="Eval") -> float:
