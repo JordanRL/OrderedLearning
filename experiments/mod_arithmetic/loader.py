@@ -43,6 +43,9 @@ class ModArithmeticLoader(DatasetLoader):
         elif self.strategy == 'fixed-random':
             ds = SparseModularDataset(raw_data, mode='random', p=self.p)
             return [GPUBatchIterator(ds, batch_size=self.batch_size)]
+        elif self.strategy == 'resonant':
+            ds = SparseModularDataset(raw_data, mode='preordered', p=self.p)
+            return [GPUBatchIterator(ds, batch_size=self.batch_size)]
         else:  # random
             ds = SparseModularDataset(raw_data, mode='random', p=self.p)
             return [GPUBatchIterator(ds, batch_size=self.batch_size, shuffle=True, seed=self.seed)]

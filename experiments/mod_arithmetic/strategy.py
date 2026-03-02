@@ -19,3 +19,8 @@ class FixedRandomStrategy(SimpleTrainStep):
     @property
     def name(self) -> str:
         return "Fixed Random"
+
+class ResonantStrategy(SimpleTrainStep):
+    @property
+    def name(self) -> str:
+        return "Resonant"

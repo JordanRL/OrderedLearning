@@ -30,6 +30,11 @@ class ModArithmeticConfig(BaseConfig):
     stride: int | None = None          # stride for 'stride' ordering (default: floor(sqrt(p)))
     target_acc: float = 99.5
 
+    # Resonant strategy parameters
+    n_harmonics: int = 4           # number of harmonic frequencies to target (F, 2F, 4F, ...)
+    overlap_frac: float = 0.4      # fraction of each batch dedicated to coupling
+    n_cycles: int = 3              # number of residue-class sweeps per epoch
+
     def __post_init__(self):
         super().__post_init__()
         if self.lr <= 0:
@@ -48,3 +53,9 @@ class ModArithmeticConfig(BaseConfig):
             raise ValueError(f"layers must be > 0, got {self.layers}")
         if self.optimizer not in ('adamw', 'adam'):
             raise ValueError(f"optimizer must be 'adamw' or 'adam', got '{self.optimizer}'")
+        if self.n_harmonics <= 0:
+            raise ValueError(f"n_harmonics must be > 0, got {self.n_harmonics}")
+        if not (0.0 <= self.overlap_frac <= 1.0):
+            raise ValueError(f"overlap_frac must be in [0, 1], got {self.overlap_frac}")
+        if self.n_cycles <= 0:
+            raise ValueError(f"n_cycles must be > 0, got {self.n_cycles}")

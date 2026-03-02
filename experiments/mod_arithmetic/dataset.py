@@ -12,6 +12,7 @@ class SparseModularDataset(Dataset):
     Supports different orderings:
     - 'structured_stride': groups by geometric proximity (a % stride)
     - 'structured_target': groups by algebraic target (sum mod p)
+    - 'preordered': data arrives pre-structured; order is preserved exactly
     - 'random': no reordering
     """
 
@@ -21,6 +22,8 @@ class SparseModularDataset(Dataset):
             final_data = sorted(raw_data, key=lambda x: (x[0] % stride, x[0]))
         elif mode == 'structured_target':
             final_data = sorted(raw_data, key=lambda x: x[2])
+        elif mode == 'preordered':
+            final_data = raw_data
         else:
             final_data = raw_data
 

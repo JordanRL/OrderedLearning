@@ -14,8 +14,10 @@ from .model import GrokkingTransformer
 from .generator import ModArithmeticGenerator
 from .loader import ModArithmeticLoader
 from .dataset import SparseModularDataset, GPUBatchIterator
+from .resonant_generator import ResonantDatasetBuilder
 from .strategy import (
     StrideStrategy, TargetStrategy, RandomStrategy, FixedRandomStrategy,
+    ResonantStrategy,
 )
 
 
@@ -103,7 +105,7 @@ class ModArithmeticRunner(GrokkingRunner):
         defaults = ModArithmeticConfig()
         parser.add_argument('--strategy', type=str, default=defaults.strategy,
                             choices=['stride', 'target', 'random', 'fixed-random',
-                                     'alternating', 'all'],
+                                     'alternating', 'resonant', 'all'],
                             help=f"Ordering strategy (default: {defaults.strategy})")
         parser.add_argument('--epochs', type=int, default=defaults.epochs,
                             help=f"Number of epochs (default: {defaults.epochs})")
@@ -134,6 +136,12 @@ class ModArithmeticRunner(GrokkingRunner):
         parser.add_argument('--optimizer', type=str, default=defaults.optimizer,
                             choices=['adamw', 'adam'],
                             help=f"Optimizer type (default: {defaults.optimizer})")
+        parser.add_argument('--n-harmonics', type=int, default=defaults.n_harmonics,
+                            help=f"Resonant: harmonic frequencies to target (default: {defaults.n_harmonics})")
+        parser.add_argument('--overlap-frac', type=float, default=defaults.overlap_frac,
+                            help=f"Resonant: coupling group fraction (default: {defaults.overlap_frac})")
+        parser.add_argument('--n-cycles', type=int, default=defaults.n_cycles,
+                            help=f"Resonant: residue-class sweeps per epoch (default: {defaults.n_cycles})")
 
     @classmethod
     def build_config(cls, args):
@@ -157,13 +165,16 @@ class ModArithmeticRunner(GrokkingRunner):
             output_dir=args.output_dir,
             record_trajectory=args.record_trajectory,
             with_compile=args.with_compile,
+            n_harmonics=args.n_harmonics,
+            overlap_frac=args.overlap_frac,
+            n_cycles=args.n_cycles,
         )
 
     # === Required by framework ===
 
     def get_strategies(self):
         if self.config.strategy == 'all':
-            return ['stride', 'random', 'fixed-random', 'target']
+            return ['stride', 'random', 'fixed-random', 'target', 'resonant']
         return [self.config.strategy]
 
     def create_model(self):
@@ -191,6 +202,9 @@ class ModArithmeticRunner(GrokkingRunner):
 
     def create_data(self, strategy_name):
         """Generate data once and cache. Returns list of train DataLoaders."""
+        if strategy_name == 'resonant':
+            return self._create_resonant_data()
+
         if self._raw_data is None:
             generator = ModArithmeticGenerator(console=self.console)
             self._raw_data = generator.generate(self.config)
@@ -215,6 +229,51 @@ class ModArithmeticRunner(GrokkingRunner):
         )
         return loader.load(train_raw, self.config)
 
+    def _create_resonant_data(self):
+        """Build resonant training data and standard test data."""
+        import random as stdlib_random
+
+        cfg = self.config
+        stride = cfg.stride if cfg.stride is not None else int(math.sqrt(cfg.p))
+
+        builder = ResonantDatasetBuilder(
+            p=cfg.p,
+            stride=stride,
+            n_harmonics=cfg.n_harmonics,
+            overlap_frac=cfg.overlap_frac,
+            n_cycles=cfg.n_cycles,
+            seed=cfg.seed,
+            console=self.console,
+        )
+        train_data, resonant_batch_size = builder.build()
+        builder.display_stats()
+
+        # Generate standard random test set
+        train_pairs = {(a, b) for a, b, _ in train_data}
+        rng = stdlib_random.Random(cfg.seed)
+        test_data = []
+        while len(test_data) < cfg.test_size:
+            a = rng.randint(0, cfg.p - 1)
+            b = rng.randint(0, cfg.p - 1)
+            if (a, b) not in train_pairs:
+                test_data.append((a, b, (a + b) % cfg.p))
+
+        # Create test loader
+        test_ds = SparseModularDataset(test_data, mode='random', p=cfg.p)
+        self.test_loader = GPUBatchIterator(
+            test_ds, batch_size=cfg.batch_size * 8,
+        )
+
+        # Create train loader with resonant batch size
+        loader = ModArithmeticLoader(
+            strategy='resonant',
+            p=cfg.p,
+            batch_size=resonant_batch_size,
+            seed=cfg.seed,
+            stride=cfg.stride,
+        )
+        return loader.load(train_data, cfg)
+
     def create_strategy(self, strategy_name):
         if strategy_name == 'target':
             strategy = TargetStrategy()
@@ -224,6 +283,8 @@ class ModArithmeticRunner(GrokkingRunner):
             strategy = FixedRandomStrategy()
         elif strategy_name == 'stride':
             strategy = StrideStrategy()
+        elif strategy_name == 'resonant':
+            strategy = ResonantStrategy()
         else:
             raise ValueError(f"Unknown strategy: {strategy_name}")
         self._current_strategy = strategy
@@ -268,14 +329,24 @@ class ModArithmeticRunner(GrokkingRunner):
 
     def display_condition_start(self, strategy_name):
         cfg = self.config
-        curriculum_type = (
-            "Random" if strategy_name in ('random', 'fixed-random')
-            else "Structured"
-        )
+        if strategy_name == 'resonant':
+            curriculum_type = "Resonant"
+        elif strategy_name in ('random', 'fixed-random'):
+            curriculum_type = "Random"
+        else:
+            curriculum_type = "Structured"
+
         settings = {'Type': curriculum_type}
+        stride_val = cfg.stride if cfg.stride is not None else int(math.sqrt(cfg.p))
         if strategy_name == 'stride':
-            stride_val = cfg.stride if cfg.stride is not None else int(math.sqrt(cfg.p))
             settings['Stride'] = str(stride_val)
+        elif strategy_name == 'resonant':
+            F = round(cfg.p / stride_val)
+            settings['Stride'] = str(stride_val)
+            settings['Target Freq'] = str(F)
+            settings['Harmonics'] = str(cfg.n_harmonics)
+            settings['Overlap'] = f"{cfg.overlap_frac:.0%}"
+            settings['Cycles/Epoch'] = str(cfg.n_cycles)
 
         settings.update({
             'Epochs': str(cfg.epochs),
