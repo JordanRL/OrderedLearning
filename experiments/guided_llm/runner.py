@@ -188,7 +188,7 @@ class GuidedLLMRunner(LMRunner):
     def create_strategy(self, strategy_name):
         return FixedTargetStep()
 
-    def get_strategy_kwargs(self, strategy_name, model, optimizer, data):
+    def get_strategy_kwargs(self, strategy_name, components):
         """Provide target_config, tokenizer, and selector for FixedTargetStep."""
         target_name, selector_name = self._parse_strategy(strategy_name)
         target_config = self.targets[target_name]
