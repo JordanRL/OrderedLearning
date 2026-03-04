@@ -36,6 +36,9 @@ from .formatting import (
     format_accuracy,
     format_loss,
 )
+from .data import (
+    display_content_analysis,
+)
 
 __all__ = [
     # Lifecycle
@@ -52,4 +55,6 @@ __all__ = [
     'display_post_live_summary', 'display_phase_transition', 'display_grokking_achieved',
     # Formatting
     'format_prob', 'format_change', 'format_accuracy', 'format_loss',
+    # Data
+    'display_content_analysis',
 ]
