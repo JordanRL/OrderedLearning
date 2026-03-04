@@ -129,6 +129,7 @@ class GuidedLLMRunner(LMRunner):
             seed=args.seed,
             output_dir=args.output_dir,
             record_trajectory=args.record_trajectory,
+            with_compile=getattr(args, 'with_compile', False),
             coverage_ema_decay=args.coverage_decay,
             coverage_penalty_weight=args.coverage_penalty,
             momentum_penalty_weight=args.momentum_penalty,
@@ -189,7 +190,7 @@ class GuidedLLMRunner(LMRunner):
         return FixedTargetStep()
 
     def get_strategy_kwargs(self, strategy_name, components):
-        """Provide target_config, tokenizer, and selector for FixedTargetStep."""
+        """Provide target_config, tokenizer, selector, and data for FixedTargetStep."""
         target_name, selector_name = self._parse_strategy(strategy_name)
         target_config = self.targets[target_name]
         selector = self._get_selector(selector_name)
@@ -197,6 +198,7 @@ class GuidedLLMRunner(LMRunner):
             'target_config': target_config,
             'tokenizer': self.tokenizer,
             'selector': selector,
+            'data': components.data,
         }
 
     # === Configuration ===
@@ -259,7 +261,7 @@ class GuidedLLMRunner(LMRunner):
         for target_name, target_results in grouped.items():
             display.display_comparison_table(
                 target_results,
-                metric_keys=['loss', 'seq_prob', 'avg_target_prob'],
+                metric_keys=['loss', 'sequence_probability', 'average_target_probability'],
             )
 
     # === Results ===
@@ -278,24 +280,24 @@ class GuidedLLMRunner(LMRunner):
         if init_eval and final_eval:
             init_m = init_eval.metrics
             final_m = final_eval.metrics
-            init_seq = init_m.get('seq_prob', 0)
-            init_tgt = init_m.get('avg_target_prob', 0)
+            init_seq = init_m.get('sequence_probability', 0)
+            init_tgt = init_m.get('average_target_probability', 0)
 
             base['initial_seq_prob'] = init_seq
-            base['final_seq_prob'] = final_m.get('seq_prob', 0)
+            base['final_seq_prob'] = final_m.get('sequence_probability', 0)
             base['seq_prob_ratio'] = (
-                final_m.get('seq_prob', 0) / init_seq
+                final_m.get('sequence_probability', 0) / init_seq
                 if init_seq > 0 else 0
             )
             base['initial_target_prob'] = init_tgt
-            base['final_target_prob'] = final_m.get('avg_target_prob', 0)
+            base['final_target_prob'] = final_m.get('average_target_probability', 0)
             base['target_prob_ratio'] = (
-                final_m.get('avg_target_prob', 0) / init_tgt
+                final_m.get('average_target_probability', 0) / init_tgt
                 if init_tgt > 0 else 0
             )
             if final_eval.display_data:
                 base['final_generation'] = final_eval.display_data.get(
-                    'gen_text', ''
+                    'generated_text', ''
                 )
 
         return base
