@@ -10,6 +10,8 @@ from .dataset_generator import DatasetGenerator
 from .dataset_loader import DatasetLoader, FixedPoolLoader
 from .selectors import (
     GradientSelector, AlignedSelector, AntiAlignedSelector, RandomSelector,
+    DiverseAlignedSelector, CoveragePenalizedSelector, ProjectedNoveltySelector,
+    MomentumOffsetSelector, EntanglementTargetedSelector,
     compute_candidate_alignments_sequential,
 )
 from .rollout_buffer import RolloutBuffer, RolloutBatch
@@ -20,6 +22,8 @@ __all__ = [
     'DatasetGenerator',
     'DatasetLoader', 'FixedPoolLoader',
     'GradientSelector', 'AlignedSelector', 'AntiAlignedSelector', 'RandomSelector',
+    'DiverseAlignedSelector', 'CoveragePenalizedSelector', 'ProjectedNoveltySelector',
+    'MomentumOffsetSelector', 'EntanglementTargetedSelector',
     'compute_candidate_alignments_sequential',
     'RolloutBuffer', 'RolloutBatch',
     'TaskSampler', 'TaskBatch',

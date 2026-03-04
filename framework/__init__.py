@@ -79,6 +79,8 @@ from .models import PCLayer, PCLayerConfig, PredictiveCodingNetwork
 from .data import (
     DataPool, FixedDataPool, DATASET_CONFIGS,
     GradientSelector, AlignedSelector, AntiAlignedSelector, RandomSelector,
+    DiverseAlignedSelector, CoveragePenalizedSelector, ProjectedNoveltySelector,
+    MomentumOffsetSelector, EntanglementTargetedSelector,
     compute_candidate_alignments_sequential,
 )
 from .curriculum import CurriculumManager
@@ -138,6 +140,8 @@ __all__ = [
     'PCLayer', 'PCLayerConfig', 'PredictiveCodingNetwork',
     'DataPool', 'FixedDataPool', 'DATASET_CONFIGS',
     'GradientSelector', 'AlignedSelector', 'AntiAlignedSelector', 'RandomSelector',
+    'DiverseAlignedSelector', 'CoveragePenalizedSelector', 'ProjectedNoveltySelector',
+    'MomentumOffsetSelector', 'EntanglementTargetedSelector',
     'compute_candidate_alignments_sequential',
     'CurriculumManager',
     'add_common_args', 'add_hook_args', 'add_eval_target_args',

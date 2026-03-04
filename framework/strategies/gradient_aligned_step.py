@@ -45,6 +45,9 @@ class GradientAlignedStep(StrategyRunner):
         self._use_amp = self._scaler is not None
         self._autocast_device = device.type if device.type in ('cuda', 'cpu') else 'cpu'
 
+        # Allow stateful selectors to store model/optimizer references
+        self.selector.setup_state(model=self.model, optimizer=self.optimizer)
+
     @abstractmethod
     def compute_target_gradient(self, step: int) -> torch.Tensor | None:
         """Compute the target gradient for selection.
@@ -102,11 +105,15 @@ class GradientAlignedStep(StrategyRunner):
             self._scaler.scale(loss).backward()
             self._scaler.unscale_(self.optimizer)
             self._components.clip_gradients()
+            # Let stateful selectors capture gradient before optimizer step
+            self.selector.post_train_step(self.model)
             self._scaler.step(self.optimizer)
             self._scaler.update()
         else:
             loss.backward()
             self._components.clip_gradients()
+            # Let stateful selectors capture gradient before optimizer step
+            self.selector.post_train_step(self.model)
             self.optimizer.step()
 
         avg_sim = sum(s[1] for s in selected) / len(selected)
