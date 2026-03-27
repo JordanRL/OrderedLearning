@@ -1,6 +1,6 @@
 # OrderedLearning
 
-An experiment framework for studying how data ordering strategies affect neural network learning. Companion code for the paper: *[TODO: paper title and link]*.
+An experiment framework for studying how data ordering strategies affect neural network learning. Companion code for the paper: [The Order Is The Message](https://arxiv.org/abs/2603.25047).
 
 ## Overview
 
